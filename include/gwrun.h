@@ -32,6 +32,8 @@ int buffer_append_cstr(GwBuffer *buf, const char *s);
 char *json_escape_alloc(const char *s);
 char *read_file_alloc(const char *path, char *error, size_t error_len);
 long monotonic_ms(void);
+const char *auth_header_get(int prompt);
+int auth_header_configured(void);
 
 int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *response);
 void http_response_free(GwHttpResponse *response);

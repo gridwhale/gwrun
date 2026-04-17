@@ -21,6 +21,9 @@ copy-runtime: $(BIN)
 		ldd ./$(BIN).exe 2>/dev/null | awk '/\/ucrt64\/bin/ { print $$3 }' | while read dll; do \
 			cp -u "$$dll" .; \
 		done; \
+		if [ -f /ucrt64/etc/ssl/certs/ca-bundle.crt ]; then \
+			cp -u /ucrt64/etc/ssl/certs/ca-bundle.crt .; \
+		fi; \
 	else \
 		echo "copy-runtime requires ldd"; \
 		exit 1; \

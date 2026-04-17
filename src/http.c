@@ -12,12 +12,40 @@ static size_t write_body(char *ptr, size_t size, size_t nmemb, void *userdata)
 	return buffer_append(buf, ptr, len) ? len : 0;
 }
 
+static int file_exists(const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) {
+		return 0;
+	}
+	fclose(f);
+	return 1;
+}
+
+static const char *default_ca_bundle(void)
+{
+	const char *env = getenv("CURL_CA_BUNDLE");
+	if (env && env[0]) {
+		return env;
+	}
+	if (file_exists("ca-bundle.crt")) {
+		return "ca-bundle.crt";
+	}
+#ifdef _WIN32
+	if (file_exists("C:\\msys64\\ucrt64\\etc\\ssl\\certs\\ca-bundle.crt")) {
+		return "C:\\msys64\\ucrt64\\etc\\ssl\\certs\\ca-bundle.crt";
+	}
+#endif
+	return NULL;
+}
+
 int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *response)
 {
 	CURL *curl;
 	CURLcode rc;
 	struct curl_slist *headers = NULL;
 	const char *auth;
+	const char *ca_bundle;
 
 	response->status = 0;
 	response->error[0] = '\0';
@@ -29,7 +57,7 @@ int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *resp
 		return 0;
 	}
 
-	auth = getenv("GRIDWHALE_AUTH_HEADER");
+	auth = auth_header_get(1);
 
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 	headers = curl_slist_append(headers, "Accept: application/json");
@@ -57,6 +85,11 @@ int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *resp
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response->body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, opts->timeout_ms > 0 ? opts->timeout_ms : 30000L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "gwrun/" GWRUN_VERSION);
+
+	ca_bundle = default_ca_bundle();
+	if (ca_bundle) {
+		curl_easy_setopt(curl, CURLOPT_CAINFO, ca_bundle);
+	}
 
 	rc = curl_easy_perform(curl);
 	if (rc != CURLE_OK) {

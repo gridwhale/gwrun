@@ -1,4 +1,5 @@
 *.o
 *.dll
+ca-bundle.crt
 gwrun
 gwrun.exe

@@ -33,7 +33,7 @@ C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=
 ```
 
 To run the executable directly from PowerShell without changing `PATH`, copy
-the required runtime DLLs next to `gwrun.exe`:
+the required runtime DLLs and CA certificate bundle next to `gwrun.exe`:
 
 ```powershell
 C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=/ucrt64/bin:`$PATH make copy-runtime"
@@ -54,6 +54,10 @@ header through:
 ```sh
 GRIDWHALE_AUTH_HEADER="Basic ..."
 ```
+
+If `GRIDWHALE_AUTH_HEADER` is not set, `gwrun` prompts for a username and
+password and uses those credentials for Basic auth during the current process.
+The password prompt disables terminal echo when the terminal supports it.
 
 The default server is:
 

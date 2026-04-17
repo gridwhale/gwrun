@@ -79,7 +79,7 @@ int command_check(const GwOptions *opts)
 			ok ? "true" : "false",
 			server ? server : "\"\"",
 			duration,
-			getenv("GRIDWHALE_AUTH_HEADER") ? "true" : "false",
+			auth_header_configured() ? "true" : "false",
 			ok ? "true" : "false",
 			res.status);
 		free(server);
@@ -91,7 +91,7 @@ int command_check(const GwOptions *opts)
 		printf("}}\n");
 	} else {
 		printf("server: %s\n", opts->server);
-		printf("auth: %s\n", getenv("GRIDWHALE_AUTH_HEADER") ? "configured" : "missing");
+		printf("auth: %s\n", auth_header_configured() ? "configured" : "missing");
 		printf("remote: %s", ok ? "reachable" : "failed");
 		if (!ok && res.error[0]) {
 			printf(" (%s)", res.error);
@@ -194,7 +194,7 @@ int command_agent_manifest(const GwOptions *opts)
 		printf("\"server\":{\"url\":%s,\"reachable\":%s,\"auth\":{\"configured\":%s,\"source\":\"GRIDWHALE_AUTH_HEADER\",\"type\":\"Basic\",\"redacted\":\"Basic ***\"}},",
 			server ? server : "\"\"",
 			ok ? "true" : "false",
-			getenv("GRIDWHALE_AUTH_HEADER") ? "true" : "false");
+			auth_header_configured() ? "true" : "false");
 		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
@@ -217,7 +217,7 @@ int command_agent_manifest(const GwOptions *opts)
 	} else {
 		printf("gwrun %s\n", GWRUN_VERSION);
 		printf("server: %s\n", opts->server);
-		printf("auth: %s\n", getenv("GRIDWHALE_AUTH_HEADER") ? "configured" : "missing");
+		printf("auth: %s\n", auth_header_configured() ? "configured" : "missing");
 		printf("remote tools: %s\n", ok ? "available" : "unavailable");
 		printf("agent discovery: gwrun agent manifest --output json\n");
 	}
