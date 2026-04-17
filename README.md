@@ -12,6 +12,10 @@ The first version focuses on remote GridWhale MCP calls:
 
 Local process execution via `gwrun run` is intentionally deferred.
 
+## License
+
+MIT. See `LICENSE`.
+
 ## Build
 
 Requires a C11 compiler and libcurl.
