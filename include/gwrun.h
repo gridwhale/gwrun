@@ -36,6 +36,7 @@ const char *auth_header_get(int prompt);
 int auth_header_configured(void);
 
 int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *response);
+int http_post_json_url(const GwOptions *opts, const char *url, const char *body, GwHttpResponse *response);
 void http_response_free(GwHttpResponse *response);
 
 int mcp_call(const GwOptions *opts, const char *method, const char *params_json, GwHttpResponse *response);
@@ -47,5 +48,9 @@ int command_tools_list(const GwOptions *opts);
 int command_tools_describe(const GwOptions *opts, const char *name);
 int command_call(const GwOptions *opts, const char *tool_name, const char *args_json);
 int command_agent_manifest(const GwOptions *opts);
+int command_process_start(const GwOptions *opts, const char *program, const char *args_json);
+int command_process_view(const GwOptions *opts, const char *process_id, const char *seq_json);
+int command_process_input(const GwOptions *opts, const char *process_id, const char *input_text, const char *seq_json);
+int command_process_attach(const GwOptions *opts, const char *program, const char *args_json);
 
 #endif

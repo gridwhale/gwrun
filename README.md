@@ -9,6 +9,10 @@ The first version focuses on remote GridWhale MCP calls:
 - `gwrun tools describe <name> --output json`
 - `gwrun call <name> --json <object> --output json`
 - `gwrun call <name> --json-file <path> --output json`
+- `gwrun process start <program> --json-file <path> --output json`
+- `gwrun process view <processID> --seq 0 --output json`
+- `gwrun process input <processID> --text <text> --seq <json> --output json`
+- `gwrun process attach <program> --json-file <path>`
 
 Local process execution via `gwrun run` is intentionally deferred.
 
@@ -76,4 +80,44 @@ quoting:
 
 ```sh
 gwrun call NUEG3K9Y.HelloWorld --json-file args.json --output json
+```
+
+## Remote Processes
+
+`gwrun process` uses the GridWhale process endpoints:
+
+- `/mcp/processStart`
+- `/mcp/processView`
+- `/mcp/processInput`
+
+Start a process:
+
+```sh
+gwrun process start NUEG3K9Y.HelloWorld --json-file args.json --output json
+```
+
+Poll for a process view. The sequence value is JSON; use `0` for the first
+view and pass later `$Seq` values back exactly as returned:
+
+```sh
+gwrun process view <processID> --seq 0 --output json
+```
+
+When a view returns an `INPUT.seq`, send console input with that sequence:
+
+```sh
+gwrun process input <processID> --text "42" --seq '["AEON2011:ipInteger:v1","..."]' --output json
+```
+
+On shells that rewrite quotes in JSON arguments, write the sequence JSON to a
+file and use `--seq-file`:
+
+```sh
+gwrun process input <processID> --text "42" --seq-file seq.json --output json
+```
+
+For an interactive console loop, use:
+
+```sh
+gwrun process attach NUEG3K9Y.HelloWorld --json-file args.json
 ```

@@ -194,6 +194,186 @@ static int dispatch(int argc, char **argv)
 		return code;
 	}
 
+	if (strcmp(cmdv[0], "process") == 0) {
+		int code;
+		if (cmdc < 2) {
+			fprintf(stderr, "gwrun: expected process subcommand\n");
+			free(cmdv);
+			return 2;
+		}
+
+		if (strcmp(cmdv[1], "start") == 0 || strcmp(cmdv[1], "attach") == 0) {
+			const char *program;
+			const char *json = "{}";
+			char *json_file_data = NULL;
+			char error[256];
+			int j;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gwrun: process %s requires a program name\n", cmdv[1]);
+				free(cmdv);
+				return 2;
+			}
+			program = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--json") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --json requires a value\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--json-file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --json-file requires a path\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!json_file_data) {
+						fprintf(stderr, "gwrun: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					json = json_file_data;
+				} else {
+					fprintf(stderr, "gwrun: unknown process %s option: %s\n", cmdv[1], cmdv[j]);
+					free(json_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+
+			if (strcmp(cmdv[1], "start") == 0) {
+				code = command_process_start(&opts, program, json);
+			} else {
+				code = command_process_attach(&opts, program, json);
+			}
+			free(json_file_data);
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "view") == 0) {
+			const char *process_id;
+			const char *seq = "0";
+			char *seq_file_data = NULL;
+			char error[256];
+			int j;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gwrun: process view requires a process ID\n");
+				free(cmdv);
+				return 2;
+			}
+			process_id = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--seq") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --seq requires a JSON value\n");
+						free(seq_file_data);
+						free(cmdv);
+						return 2;
+					}
+					seq = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--seq-file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --seq-file requires a path\n");
+						free(seq_file_data);
+						free(cmdv);
+						return 2;
+					}
+					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!seq_file_data) {
+						fprintf(stderr, "gwrun: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					seq = seq_file_data;
+				} else {
+					fprintf(stderr, "gwrun: unknown process view option: %s\n", cmdv[j]);
+					free(seq_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+			code = command_process_view(&opts, process_id, seq);
+			free(seq_file_data);
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "input") == 0) {
+			const char *process_id;
+			const char *text = NULL;
+			const char *seq = NULL;
+			char *seq_file_data = NULL;
+			char error[256];
+			int j;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gwrun: process input requires a process ID\n");
+				free(cmdv);
+				return 2;
+			}
+			process_id = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--text") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --text requires a value\n");
+						free(seq_file_data);
+						free(cmdv);
+						return 2;
+					}
+					text = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--seq") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --seq requires a JSON value\n");
+						free(seq_file_data);
+						free(cmdv);
+						return 2;
+					}
+					seq = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--seq-file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gwrun: --seq-file requires a path\n");
+						free(seq_file_data);
+						free(cmdv);
+						return 2;
+					}
+					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!seq_file_data) {
+						fprintf(stderr, "gwrun: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					seq = seq_file_data;
+				} else {
+					fprintf(stderr, "gwrun: unknown process input option: %s\n", cmdv[j]);
+					free(seq_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+			if (!text || !seq) {
+				fprintf(stderr, "gwrun: process input requires --text and --seq\n");
+				free(seq_file_data);
+				free(cmdv);
+				return 2;
+			}
+			code = command_process_input(&opts, process_id, text, seq);
+			free(seq_file_data);
+			free(cmdv);
+			return code;
+		}
+
+		fprintf(stderr, "gwrun: unknown process subcommand: %s\n", cmdv[1]);
+		free(cmdv);
+		return 2;
+	}
+
 	fprintf(stderr, "gwrun: unknown command: %s\n", cmdv[0]);
 	free(cmdv);
 	return 2;

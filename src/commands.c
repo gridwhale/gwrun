@@ -71,6 +71,143 @@ static const char *find_matching_object_end(const char *object_start)
 	return NULL;
 }
 
+static const char *find_matching_array_end(const char *array_start)
+{
+	const char *p;
+	int depth = 0;
+	int in_string = 0;
+	int escape = 0;
+
+	for (p = array_start; *p; p++) {
+		if (in_string) {
+			if (escape) {
+				escape = 0;
+			} else if (*p == '\\') {
+				escape = 1;
+			} else if (*p == '"') {
+				in_string = 0;
+			}
+			continue;
+		}
+
+		if (*p == '"') {
+			in_string = 1;
+		} else if (*p == '[') {
+			depth++;
+		} else if (*p == ']') {
+			depth--;
+			if (depth == 0) {
+				return p + 1;
+			}
+		}
+	}
+	return NULL;
+}
+
+static const char *find_json_value_end(const char *value_start)
+{
+	const char *p = value_start;
+
+	while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+		p++;
+	}
+
+	if (*p == '{') {
+		return find_matching_object_end(p);
+	}
+	if (*p == '[') {
+		return find_matching_array_end(p);
+	}
+	if (*p == '"') {
+		int escape = 0;
+		p++;
+		while (*p) {
+			if (escape) {
+				escape = 0;
+			} else if (*p == '\\') {
+				escape = 1;
+			} else if (*p == '"') {
+				return p + 1;
+			}
+			p++;
+		}
+		return NULL;
+	}
+
+	while (*p && *p != ',' && *p != '}' && *p != ']') {
+		p++;
+	}
+	return p;
+}
+
+static char *json_value_dup(const char *value_start)
+{
+	const char *start = value_start;
+	const char *end;
+	char *out;
+	size_t len;
+
+	while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') {
+		start++;
+	}
+	end = find_json_value_end(start);
+	if (!end || end < start) {
+		return NULL;
+	}
+	while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n')) {
+		end--;
+	}
+
+	len = (size_t)(end - start);
+	out = (char *)malloc(len + 1);
+	if (!out) {
+		return NULL;
+	}
+	memcpy(out, start, len);
+	out[len] = '\0';
+	return out;
+}
+
+static char *json_object_member_dup(const char *json, const char *name)
+{
+	GwBuffer key;
+	const char *p;
+	const char *colon;
+	char *value;
+
+	buffer_init(&key);
+	if (!buffer_append_cstr(&key, "\"") ||
+		!buffer_append_cstr(&key, name) ||
+		!buffer_append_cstr(&key, "\"")) {
+		buffer_free(&key);
+		return NULL;
+	}
+
+	p = strstr(json, key.data);
+	buffer_free(&key);
+	if (!p) {
+		return NULL;
+	}
+	colon = strchr(p, ':');
+	if (!colon) {
+		return NULL;
+	}
+	value = json_value_dup(colon + 1);
+	return value;
+}
+
+static char *json_object_path_dup(const char *json, const char *object_name, const char *member_name)
+{
+	char *object_json = json_object_member_dup(json, object_name);
+	char *value = NULL;
+
+	if (object_json) {
+		value = json_object_member_dup(object_json, member_name);
+		free(object_json);
+	}
+	return value;
+}
+
 static char *json_string_dup(const char *quote, const char **end_out)
 {
 	GwBuffer out;
@@ -260,8 +397,12 @@ static int print_remote_result(const GwOptions *opts, const char *command, GwHtt
 
 	if (wants_json(opts)) {
 		char *err = json_escape_alloc(res->error[0] ? res->error : "remote request failed");
-		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"remote_error\",\"httpStatus\":%ld,\"durationMs\":%ld,\"error\":{\"message\":%s}}\n",
+		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"remote_error\",\"httpStatus\":%ld,\"durationMs\":%ld,\"error\":{\"message\":%s}",
 			command, res->status, duration_ms, err ? err : "\"\"");
+		if (res->body.data && res->body.data[0]) {
+			printf(",\"result\":%s", res->body.data);
+		}
+		printf("}\n");
 		free(err);
 	} else {
 		fprintf(stderr, "gwrun: remote request failed");
@@ -272,8 +413,168 @@ static int print_remote_result(const GwOptions *opts, const char *command, GwHtt
 			fprintf(stderr, ": %s", res->error);
 		}
 		fprintf(stderr, "\n");
+		if (res->body.data && res->body.data[0]) {
+			fprintf(stderr, "%s\n", res->body.data);
+		}
 	}
 	return 3;
+}
+
+static char *mcp_endpoint_url_alloc(const GwOptions *opts, const char *name)
+{
+	const char *server = opts->server;
+	const char *mcp = strstr(server, "/mcp");
+	GwBuffer out;
+
+	buffer_init(&out);
+	if (mcp) {
+		size_t prefix_len = (size_t)(mcp - server);
+		if (!buffer_append(&out, server, prefix_len) ||
+			!buffer_append_cstr(&out, "/mcp/") ||
+			!buffer_append_cstr(&out, name)) {
+			buffer_free(&out);
+			return NULL;
+		}
+		return out.data;
+	}
+
+	if (!buffer_append_cstr(&out, server)) {
+		return NULL;
+	}
+	if (out.len > 0 && out.data[out.len - 1] == '/') {
+		out.len--;
+		out.data[out.len] = '\0';
+	}
+	if (!buffer_append_cstr(&out, "/mcp/") ||
+		!buffer_append_cstr(&out, name)) {
+		buffer_free(&out);
+		return NULL;
+	}
+	return out.data;
+}
+
+static int process_post(const GwOptions *opts, const char *endpoint, const char *body, GwHttpResponse *res)
+{
+	char *url = mcp_endpoint_url_alloc(opts, endpoint);
+	int ok;
+
+	if (!url) {
+		res->status = 0;
+		res->error[0] = '\0';
+		snprintf(res->error, sizeof(res->error), "out of memory building process endpoint URL");
+		buffer_init(&res->body);
+		return 0;
+	}
+	ok = http_post_json_url(opts, url, body, res);
+	free(url);
+	return ok;
+}
+
+static int build_process_start_body(GwBuffer *body, const char *program, const char *args_json)
+{
+	char *program_json = json_escape_alloc(program);
+	int ok;
+
+	if (!program_json) {
+		return 0;
+	}
+	buffer_init(body);
+	ok = buffer_append_cstr(body, "{\"program\":") &&
+		buffer_append_cstr(body, program_json) &&
+		buffer_append_cstr(body, ",\"args\":") &&
+		buffer_append_cstr(body, args_json ? args_json : "{}") &&
+		buffer_append_cstr(body, "}");
+	free(program_json);
+	if (!ok) {
+		buffer_free(body);
+	}
+	return ok;
+}
+
+static int build_process_view_body(GwBuffer *body, const char *process_id, const char *seq_json)
+{
+	char *id_json = json_escape_alloc(process_id);
+	int ok;
+
+	if (!id_json) {
+		return 0;
+	}
+	buffer_init(body);
+	ok = buffer_append_cstr(body, "{\"processID\":") &&
+		buffer_append_cstr(body, id_json) &&
+		buffer_append_cstr(body, ",\"seq\":") &&
+		buffer_append_cstr(body, seq_json ? seq_json : "0") &&
+		buffer_append_cstr(body, "}");
+	free(id_json);
+	if (!ok) {
+		buffer_free(body);
+	}
+	return ok;
+}
+
+static int build_process_input_body(GwBuffer *body, const char *process_id, const char *input_text, const char *seq_json)
+{
+	char *id_json = json_escape_alloc(process_id);
+	char *input_json = json_escape_alloc(input_text ? input_text : "");
+	int ok;
+
+	if (!id_json || !input_json) {
+		free(id_json);
+		free(input_json);
+		return 0;
+	}
+	buffer_init(body);
+	ok = buffer_append_cstr(body, "{\"processID\":") &&
+		buffer_append_cstr(body, id_json) &&
+		buffer_append_cstr(body, ",\"inputText\":") &&
+		buffer_append_cstr(body, input_json) &&
+		buffer_append_cstr(body, ",\"seq\":") &&
+		buffer_append_cstr(body, seq_json ? seq_json : "0") &&
+		buffer_append_cstr(body, "}");
+	free(id_json);
+	free(input_json);
+	if (!ok) {
+		buffer_free(body);
+	}
+	return ok;
+}
+
+static int print_json_string_array_member(const char *json, const char *member_name)
+{
+	char *array_json = json_object_member_dup(json, member_name);
+	const char *p;
+	int count = 0;
+
+	if (!array_json || array_json[0] != '[') {
+		free(array_json);
+		return 0;
+	}
+
+	p = array_json + 1;
+	while (*p) {
+		while (*p && *p != '"' && *p != ']') {
+			p++;
+		}
+		if (*p == ']') {
+			break;
+		}
+		if (*p == '"') {
+			const char *end = NULL;
+			char *text = json_string_dup(p, &end);
+			if (!text) {
+				break;
+			}
+			fputs(text, stdout);
+			if (text[0] && text[strlen(text) - 1] != '\n') {
+				putchar('\n');
+			}
+			free(text);
+			count++;
+			p = end ? end : p + 1;
+		}
+	}
+	free(array_json);
+	return count;
 }
 
 void print_usage(void)
@@ -286,7 +587,12 @@ void print_usage(void)
 	printf("  gwrun [--server URL] [--output text|json] tools list\n");
 	printf("  gwrun [--server URL] [--output text|json] tools describe <name>\n");
 	printf("  gwrun [--server URL] [--output text|json] call <name> --json <object>\n");
-	printf("  gwrun [--server URL] [--output text|json] call <name> --json-file <path>\n\n");
+	printf("  gwrun [--server URL] [--output text|json] call <name> --json-file <path>\n");
+	printf("  gwrun [--server URL] [--output text|json] process start <program> --json <object>\n");
+	printf("  gwrun [--server URL] [--output text|json] process view <processID> --seq <json>\n");
+	printf("  gwrun [--server URL] [--output text|json] process input <processID> --text <text> --seq <json>\n");
+	printf("  gwrun [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
+	printf("  gwrun [--server URL] process attach <program> --json <object>\n\n");
 	printf("Agents: run `gwrun agent manifest --output json` for discovery.\n");
 }
 
@@ -424,6 +730,218 @@ int command_call(const GwOptions *opts, const char *tool_name, const char *args_
 	return ok;
 }
 
+int command_process_start(const GwOptions *opts, const char *program, const char *args_json)
+{
+	GwBuffer body;
+	GwHttpResponse res;
+	long start;
+	long duration;
+	int ok;
+
+	if (!build_process_start_body(&body, program, args_json)) {
+		fprintf(stderr, "gwrun: out of memory\n");
+		return 4;
+	}
+
+	start = monotonic_ms();
+	ok = process_post(opts, "processStart", body.data, &res);
+	duration = monotonic_ms() - start;
+	buffer_free(&body);
+	(void)ok;
+
+	ok = print_remote_result(opts, "process.start", &res, duration);
+	http_response_free(&res);
+	return ok;
+}
+
+int command_process_view(const GwOptions *opts, const char *process_id, const char *seq_json)
+{
+	GwBuffer body;
+	GwHttpResponse res;
+	long start;
+	long duration;
+	int ok;
+
+	if (!build_process_view_body(&body, process_id, seq_json ? seq_json : "0")) {
+		fprintf(stderr, "gwrun: out of memory\n");
+		return 4;
+	}
+
+	start = monotonic_ms();
+	ok = process_post(opts, "processView", body.data, &res);
+	duration = monotonic_ms() - start;
+	buffer_free(&body);
+	(void)ok;
+
+	ok = print_remote_result(opts, "process.view", &res, duration);
+	http_response_free(&res);
+	return ok;
+}
+
+int command_process_input(const GwOptions *opts, const char *process_id, const char *input_text, const char *seq_json)
+{
+	GwBuffer body;
+	GwHttpResponse res;
+	long start;
+	long duration;
+	int ok;
+
+	if (!build_process_input_body(&body, process_id, input_text, seq_json ? seq_json : "0")) {
+		fprintf(stderr, "gwrun: out of memory\n");
+		return 4;
+	}
+
+	start = monotonic_ms();
+	ok = process_post(opts, "processInput", body.data, &res);
+	duration = monotonic_ms() - start;
+	buffer_free(&body);
+	(void)ok;
+
+	ok = print_remote_result(opts, "process.input", &res, duration);
+	http_response_free(&res);
+	return ok;
+}
+
+int command_process_attach(const GwOptions *opts, const char *program, const char *args_json)
+{
+	GwBuffer body;
+	GwHttpResponse res;
+	char *process_id = NULL;
+	char *seq = NULL;
+	int exit_code = 0;
+
+	if (!build_process_start_body(&body, program, args_json)) {
+		fprintf(stderr, "gwrun: out of memory\n");
+		return 4;
+	}
+	if (!process_post(opts, "processStart", body.data, &res)) {
+		buffer_free(&body);
+		exit_code = print_remote_result(opts, "process.start", &res, 0);
+		http_response_free(&res);
+		return exit_code;
+	}
+	buffer_free(&body);
+
+	process_id = json_string_dup(res.body.data, NULL);
+	if (!process_id) {
+		fprintf(stderr, "gwrun: processStart did not return a process ID string\n");
+		http_response_free(&res);
+		return 3;
+	}
+	http_response_free(&res);
+
+	seq = (char *)malloc(2);
+	if (!seq) {
+		free(process_id);
+		fprintf(stderr, "gwrun: out of memory\n");
+		return 4;
+	}
+	strcpy(seq, "0");
+
+	for (;;) {
+		char *next_seq;
+		char *status_json;
+		char *status = NULL;
+		char *input_seq = NULL;
+		char *prompt = NULL;
+
+		if (!build_process_view_body(&body, process_id, seq)) {
+			exit_code = 4;
+			break;
+		}
+		if (!process_post(opts, "processView", body.data, &res)) {
+			buffer_free(&body);
+			exit_code = print_remote_result(opts, "process.view", &res, 0);
+			http_response_free(&res);
+			break;
+		}
+		buffer_free(&body);
+
+		print_json_string_array_member(res.body.data ? res.body.data : "", "CON");
+
+		next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "$Seq");
+		if (next_seq) {
+			free(seq);
+			seq = next_seq;
+		}
+
+		status_json = json_object_member_dup(res.body.data ? res.body.data : "", "$Status");
+		if (status_json && status_json[0] == '"') {
+			status = json_string_dup(status_json, NULL);
+		}
+		free(status_json);
+
+		input_seq = json_object_path_dup(res.body.data ? res.body.data : "", "INPUT", "seq");
+		prompt = json_object_path_dup(res.body.data ? res.body.data : "", "INPUT", "prompt");
+
+		if (input_seq) {
+			char line[4096];
+			char *prompt_text = NULL;
+			if (prompt && prompt[0] == '"') {
+				prompt_text = json_string_dup(prompt, NULL);
+			}
+			if (prompt_text && prompt_text[0]) {
+				fprintf(stderr, "%s", prompt_text);
+				if (prompt_text[strlen(prompt_text) - 1] != ' ') {
+					fprintf(stderr, " ");
+				}
+			}
+			fflush(stderr);
+			if (!fgets(line, sizeof(line), stdin)) {
+				free(prompt_text);
+				free(prompt);
+				free(input_seq);
+				free(status);
+				http_response_free(&res);
+				exit_code = 1;
+				break;
+			}
+			line[strcspn(line, "\r\n")] = '\0';
+			if (!build_process_input_body(&body, process_id, line, input_seq)) {
+				free(prompt_text);
+				free(prompt);
+				free(input_seq);
+				free(status);
+				http_response_free(&res);
+				exit_code = 4;
+				break;
+			}
+			http_response_free(&res);
+			if (!process_post(opts, "processInput", body.data, &res)) {
+				buffer_free(&body);
+				free(prompt_text);
+				free(prompt);
+				free(input_seq);
+				free(status);
+				exit_code = print_remote_result(opts, "process.input", &res, 0);
+				http_response_free(&res);
+				break;
+			}
+			buffer_free(&body);
+			http_response_free(&res);
+			free(prompt_text);
+			free(prompt);
+			free(input_seq);
+			free(status);
+			continue;
+		}
+
+		free(prompt);
+		free(input_seq);
+		if (status && strcmp(status, "terminated") == 0) {
+			free(status);
+			http_response_free(&res);
+			break;
+		}
+		free(status);
+		http_response_free(&res);
+	}
+
+	free(seq);
+	free(process_id);
+	return exit_code;
+}
+
 int command_agent_manifest(const GwOptions *opts)
 {
 	GwHttpResponse res;
@@ -439,12 +957,15 @@ int command_agent_manifest(const GwOptions *opts)
 			server ? server : "\"\"",
 			ok ? "true" : "false",
 			auth_header_configured() ? "true" : "false");
-		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
+		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
 		printf("{\"name\":\"tools.list\",\"argv\":[\"gwrun\",\"tools\",\"list\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"tools.describe\",\"argv\":[\"gwrun\",\"tools\",\"describe\",\"<name>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"call\",\"argv\":[\"gwrun\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]}");
+		printf("{\"name\":\"call\",\"argv\":[\"gwrun\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.start\",\"argv\":[\"gwrun\",\"process\",\"start\",\"<program>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.view\",\"argv\":[\"gwrun\",\"process\",\"view\",\"<processID>\",\"--seq\",\"<json>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.input\",\"argv\":[\"gwrun\",\"process\",\"input\",\"<processID>\",\"--text\",\"<text>\",\"--seq\",\"<json>\",\"--output\",\"json\"]}");
 		printf("],\"durationMs\":%ld,\"toolDiscoveryResult\":", duration);
 		if (ok) {
 			printf("%s", res.body.data ? res.body.data : "null");

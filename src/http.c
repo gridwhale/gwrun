@@ -39,7 +39,7 @@ static const char *default_ca_bundle(void)
 	return NULL;
 }
 
-int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *response)
+int http_post_json_url(const GwOptions *opts, const char *url, const char *body, GwHttpResponse *response)
 {
 	CURL *curl;
 	CURLcode rc;
@@ -76,7 +76,7 @@ int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *resp
 		buffer_free(&auth_header);
 	}
 
-	curl_easy_setopt(curl, CURLOPT_URL, opts->server);
+	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_POST, 1L);
 	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
@@ -103,6 +103,11 @@ int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *resp
 	curl_slist_free_all(headers);
 	curl_easy_cleanup(curl);
 	return response->status >= 200 && response->status < 300;
+}
+
+int http_post_json(const GwOptions *opts, const char *body, GwHttpResponse *response)
+{
+	return http_post_json_url(opts, opts->server, body, response);
 }
 
 void http_response_free(GwHttpResponse *response)
