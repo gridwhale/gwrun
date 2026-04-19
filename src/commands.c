@@ -918,6 +918,11 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 				break;
 			}
 			buffer_free(&body);
+			next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "$Seq");
+			if (next_seq) {
+				free(seq);
+				seq = next_seq;
+			}
 			http_response_free(&res);
 			free(prompt_text);
 			free(prompt);
