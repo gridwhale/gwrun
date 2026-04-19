@@ -359,33 +359,101 @@ static char *decode_aeon_text_lines_alloc(const char *encoded)
 	return out.data;
 }
 
-static char *program_read_source_dup(const char *json)
+static char *program_read_source_from_value_dup(const char *value)
 {
-	static const char marker[] = "\"sourceCode\":[\"AEON2011:textLines:v1\"";
-	const char *p = strstr(json, marker);
-	const char *comma;
 	const char *quote;
-	char *encoded;
 	char *source;
 
-	if (!p) {
+	if (!value) {
 		return NULL;
 	}
-	comma = strchr(p + sizeof(marker) - 1, ',');
-	if (!comma) {
+	while (*value == ' ' || *value == '\t' || *value == '\r' || *value == '\n') {
+		value++;
+	}
+
+	if (*value == '"') {
+		return json_string_dup(value, NULL);
+	}
+	if (*value != '[') {
 		return NULL;
 	}
-	quote = strchr(comma, '"');
+
+	quote = strchr(value, '"');
 	if (!quote) {
 		return NULL;
 	}
-
-	encoded = json_string_dup(quote, NULL);
-	if (!encoded) {
+	source = json_string_dup(quote, NULL);
+	if (!source) {
 		return NULL;
 	}
-	source = decode_aeon_text_lines_alloc(encoded);
-	free(encoded);
+	if (strcmp(source, "AEON2011:textLines:v1") == 0) {
+		const char *comma = strchr(quote + 1, ',');
+		char *encoded;
+		char *decoded;
+
+		free(source);
+		if (!comma) {
+			return NULL;
+		}
+		quote = strchr(comma, '"');
+		if (!quote) {
+			return NULL;
+		}
+		encoded = json_string_dup(quote, NULL);
+		if (!encoded) {
+			return NULL;
+		}
+		decoded = decode_aeon_text_lines_alloc(encoded);
+		free(encoded);
+		return decoded;
+	}
+	return source;
+}
+
+static char *program_read_source_dup(const char *json)
+{
+	const char *scan = json;
+	char *value;
+	char *source;
+
+	value = json_object_path_dup(json, "structuredContent", "sourceCode");
+	source = program_read_source_from_value_dup(value);
+	free(value);
+	if (source) {
+		return source;
+	}
+
+	while ((scan = strstr(scan, "\"text\"")) != NULL) {
+		const char *colon = strchr(scan, ':');
+		char *text;
+
+		if (!colon) {
+			break;
+		}
+		while (*colon == ':' || *colon == ' ' || *colon == '\t' || *colon == '\r' || *colon == '\n') {
+			colon++;
+		}
+		if (*colon != '"') {
+			scan = colon;
+			continue;
+		}
+
+		text = json_string_dup(colon, NULL);
+		if (text) {
+			value = json_object_member_dup(text, "sourceCode");
+			source = program_read_source_from_value_dup(value);
+			free(value);
+			free(text);
+			if (source) {
+				return source;
+			}
+		}
+		scan = colon + 1;
+	}
+
+	value = json_object_member_dup(json, "sourceCode");
+	source = program_read_source_from_value_dup(value);
+	free(value);
 	return source;
 }
 
