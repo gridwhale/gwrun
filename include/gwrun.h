@@ -17,6 +17,7 @@ typedef struct GwOptions {
 	const char *output;
 	long timeout_ms;
 	int include_raw;
+	int auth_prompt;
 } GwOptions;
 
 typedef struct GwHttpResponse {
@@ -40,8 +41,11 @@ int http_post_json_url(const GwOptions *opts, const char *url, const char *body,
 void http_response_free(GwHttpResponse *response);
 
 int mcp_call(const GwOptions *opts, const char *method, const char *params_json, GwHttpResponse *response);
+int mcp_call_no_prompt(const GwOptions *opts, const char *method, const char *params_json, GwHttpResponse *response);
 
 void print_usage(void);
+int command_help(void);
+int command_help_agents(void);
 int command_version(const GwOptions *opts);
 int command_check(const GwOptions *opts);
 int command_tools_list(const GwOptions *opts);

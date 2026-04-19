@@ -57,7 +57,7 @@ int http_post_json_url(const GwOptions *opts, const char *url, const char *body,
 		return 0;
 	}
 
-	auth = auth_header_get(1);
+	auth = auth_header_get(opts->auth_prompt);
 
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 	headers = curl_slist_append(headers, "Accept: application/json");

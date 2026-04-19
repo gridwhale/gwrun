@@ -118,6 +118,12 @@ Version:
 .\gw.exe version --output json
 ```
 
+Agent help:
+
+```powershell
+.\gw.exe help agents
+```
+
 Authenticated remote check:
 
 ```powershell

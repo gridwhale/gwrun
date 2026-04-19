@@ -44,3 +44,10 @@ int mcp_call(const GwOptions *opts, const char *method, const char *params_json,
 	buffer_free(&req);
 	return ok;
 }
+
+int mcp_call_no_prompt(const GwOptions *opts, const char *method, const char *params_json, GwHttpResponse *response)
+{
+	GwOptions no_prompt_opts = *opts;
+	no_prompt_opts.auth_prompt = 0;
+	return mcp_call(&no_prompt_opts, method, params_json, response);
+}

@@ -7,3 +7,5 @@ gw
 gw.exe
 gridwhale
 gridwhale.exe
+src/help_text.h
+src/help_agents_text.h

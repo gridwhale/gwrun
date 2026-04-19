@@ -57,6 +57,7 @@ static int dispatch(int argc, char **argv)
 	opts.output = "text";
 	opts.timeout_ms = 30000;
 	opts.include_raw = 0;
+	opts.auth_prompt = 1;
 
 	cmdv = (char **)calloc((size_t)argc, sizeof(char *));
 	if (!cmdv) {
@@ -86,6 +87,21 @@ static int dispatch(int argc, char **argv)
 		print_usage();
 		free(cmdv);
 		return 0;
+	}
+
+	if (strcmp(cmdv[0], "help") == 0) {
+		int code;
+		if (cmdc == 1) {
+			code = command_help();
+		} else if (cmdc == 2 && strcmp(cmdv[1], "agents") == 0) {
+			code = command_help_agents();
+		} else {
+			fprintf(stderr, "gw: expected `help` or `help agents`\n");
+			free(cmdv);
+			return 2;
+		}
+		free(cmdv);
+		return code;
 	}
 
 	if (strcmp(cmdv[0], "version") == 0) {

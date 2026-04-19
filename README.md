@@ -6,6 +6,8 @@ The build also creates `gridwhale` as an optional long-form executable alias.
 The first version focuses on remote GridWhale MCP calls:
 
 - `gw manifest --output json`
+- `gw help`
+- `gw help agents`
 - `gw tools list --output json`
 - `gw tools describe <name> --output json`
 - `gw tools call <name> --json <object> --output json`

@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "help_text.h"
+#include "help_agents_text.h"
+
 static int wants_json(const GwOptions *opts)
 {
 	return strcmp(opts->output, "json") == 0;
@@ -582,6 +585,7 @@ void print_usage(void)
 	printf("GridWhale CLI %s\n\n", GWRUN_VERSION);
 	printf("Usage:\n");
 	printf("  gw [--server URL] [--output text|json] version\n");
+	printf("  gw help [agents]\n");
 	printf("  gw [--server URL] [--output text|json] check\n");
 	printf("  gw [--server URL] [--output text|json] manifest\n");
 	printf("  gw [--server URL] [--output text|json] tools list\n");
@@ -594,6 +598,18 @@ void print_usage(void)
 	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
 	printf("  gw [--server URL] run <program> --json-file <path>\n\n");
 	printf("Agents: run `gw manifest --output json` for discovery.\n");
+}
+
+int command_help(void)
+{
+	fputs(GW_HELP_TEXT, stdout);
+	return 0;
+}
+
+int command_help_agents(void)
+{
+	fputs(GW_HELP_AGENTS_TEXT, stdout);
+	return 0;
 }
 
 int command_version(const GwOptions *opts)
@@ -951,20 +967,24 @@ int command_agent_manifest(const GwOptions *opts)
 {
 	GwHttpResponse res;
 	long start = monotonic_ms();
-	int ok = mcp_call(opts, "tools/list", "{}", &res);
+	int ok = mcp_call_no_prompt(opts, "tools/list", "{}", &res);
 	long duration = monotonic_ms() - start;
 
 	if (wants_json(opts)) {
 		char *server = json_escape_alloc(opts->server);
 		printf("{\"ok\":%s,\"command\":\"manifest\",\"gw\":{\"version\":\"%s\",\"protocolVersion\":\"1\"},",
 			ok ? "true" : "false", GWRUN_VERSION);
-		printf("\"server\":{\"url\":%s,\"reachable\":%s,\"auth\":{\"configured\":%s,\"source\":\"GRIDWHALE_AUTH_HEADER\",\"type\":\"Basic\",\"redacted\":\"Basic ***\"}},",
+		printf("\"server\":{\"url\":%s,\"reachable\":%s,\"auth\":{\"configured\":%s,\"source\":\"GRIDWHALE_AUTH_HEADER\",\"type\":\"Basic\",\"redacted\":\"Basic ***\",\"interactiveFallback\":true,\"agentGuidance\":\"Set GRIDWHALE_AUTH_HEADER to a full Basic auth value before invoking server commands. Agents should avoid interactive prompts.\"}},",
 			server ? server : "\"\"",
 			ok ? "true" : "false",
+			auth_header_configured() ? "true" : "false");
+		printf("\"auth\":{\"configured\":%s,\"preferredEnv\":\"GRIDWHALE_AUTH_HEADER\",\"interactiveFallback\":true,\"agentGuidance\":\"Set GRIDWHALE_AUTH_HEADER to a full Basic auth value. If local GridWhale MCP config is available, load the Authorization header from that config without printing it.\"},",
 			auth_header_configured() ? "true" : "false");
 		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
+		printf("{\"name\":\"help\",\"argv\":[\"gw\",\"help\"]},");
+		printf("{\"name\":\"help.agents\",\"argv\":[\"gw\",\"help\",\"agents\"]},");
 		printf("{\"name\":\"tools.list\",\"argv\":[\"gw\",\"tools\",\"list\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"tools.describe\",\"argv\":[\"gw\",\"tools\",\"describe\",\"<name>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"tools.call\",\"argv\":[\"gw\",\"tools\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
