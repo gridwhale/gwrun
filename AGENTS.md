@@ -1,12 +1,12 @@
-# gwrun Agent Notes
+# gw Agent Notes
 
 ## Project
 
-`gwrun` is a small C11 command-line client for GridWhale MCP-style remote tools.
+`gw` is a small C11 command-line client for GridWhale MCP-style remote tools.
 The source is intentionally dependency-light: the only external runtime/library
 dependency is libcurl.
 
-Local process execution via `gwrun run` is not implemented yet.
+Remote process execution is available via `gw process` and `gw run`.
 
 ## Repository Location
 
@@ -31,7 +31,7 @@ C:\Users\gpm\Documents\GridWhale
   it formats the current MCP `tools/list` response for humans. JSON output is
   the stable agent-facing interface.
 - Generated Windows runtime files are ignored by git:
-  `*.dll`, `ca-bundle.crt`, `gwrun`, and `gwrun.exe`.
+  `*.dll`, `ca-bundle.crt`, `gw`, `gw.exe`, `gridwhale`, and `gridwhale.exe`.
 
 ## Build On Windows
 
@@ -44,7 +44,7 @@ winget install --id MSYS2.MSYS2 -e --accept-package-agreements --accept-source-a
 C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-curl make"
 ```
 
-Build and copy runtime DLLs plus the CA bundle next to `gwrun.exe`:
+Build and copy runtime DLLs plus the CA bundle next to `gw.exe`:
 
 ```powershell
 C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=/ucrt64/bin:`$PATH make clean all copy-runtime"
@@ -61,13 +61,13 @@ C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=
 After `make copy-runtime`, PowerShell can run the executable directly:
 
 ```powershell
-.\gwrun.exe version --output json
+.\gw.exe version --output json
 ```
 
 Expected version shape:
 
 ```json
-{"ok":true,"gwrun":{"version":"0.1.0"}}
+{"ok":true,"gw":{"version":"0.1.0"}}
 ```
 
 If runtime DLLs have not been copied, PowerShell may return exit code
@@ -84,7 +84,7 @@ Preferred noninteractive agent path:
 $env:GRIDWHALE_AUTH_HEADER = 'Basic ...'
 ```
 
-When `GRIDWHALE_AUTH_HEADER` is absent, `gwrun` prompts for username/password and
+When `GRIDWHALE_AUTH_HEADER` is absent, `gw` prompts for username/password and
 uses those credentials for Basic auth during the current process.
 
 To load the existing local GridWhale MCP auth value without printing it:
@@ -105,7 +105,7 @@ https://dev.gridwhale.io/mcp/
 Override with:
 
 ```powershell
-.\gwrun.exe --server https://dev.gridwhale.io/mcp/ tools list --output json
+.\gw.exe --server https://dev.gridwhale.io/mcp/ tools list --output json
 ```
 
 ## Verification
@@ -115,13 +115,13 @@ Run these from `C:\Users\gpm\Documents\GWExtra\gwrun` after building.
 Version:
 
 ```powershell
-.\gwrun.exe version --output json
+.\gw.exe version --output json
 ```
 
 Authenticated remote check:
 
 ```powershell
-.\gwrun.exe check --output json --timeout 30000
+.\gw.exe check --output json --timeout 30000
 ```
 
 Expected check shape:
@@ -133,13 +133,13 @@ Expected check shape:
 Tool discovery, agent JSON:
 
 ```powershell
-.\gwrun.exe tools list --output json --timeout 30000
+.\gw.exe tools list --output json --timeout 30000
 ```
 
 Tool discovery, human text:
 
 ```powershell
-.\gwrun.exe tools list --output text --timeout 30000
+.\gw.exe tools list --output text --timeout 30000
 ```
 
 Expected text output starts with:
@@ -155,7 +155,7 @@ Tool invocation with a JSON file is preferred because shells rewrite inline JSON
 
 ```powershell
 Set-Content -Path .\hello.args.json -Value '{"name":"Codex"}' -NoNewline -Encoding ascii
-.\gwrun.exe call NUEG3K9Y.HelloWorld --json-file .\hello.args.json --output json --timeout 30000
+.\gw.exe call NUEG3K9Y.HelloWorld --json-file .\hello.args.json --output json --timeout 30000
 Remove-Item .\hello.args.json
 ```
 

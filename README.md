@@ -1,20 +1,22 @@
-# gwrun
+# gw
 
-`gwrun` is a small portable command-line client for GridWhale agent tooling.
+`gw` is a small portable command-line client for GridWhale agent tooling.
+The build also creates `gridwhale` as an optional long-form executable alias.
 
 The first version focuses on remote GridWhale MCP calls:
 
-- `gwrun agent manifest --output json`
-- `gwrun tools list --output json`
-- `gwrun tools describe <name> --output json`
-- `gwrun call <name> --json <object> --output json`
-- `gwrun call <name> --json-file <path> --output json`
-- `gwrun process start <program> --json-file <path> --output json`
-- `gwrun process view <processID> --seq 0 --output json`
-- `gwrun process input <processID> --text <text> --seq <json> --output json`
-- `gwrun process attach <program> --json-file <path>`
+- `gw manifest --output json`
+- `gw tools list --output json`
+- `gw tools describe <name> --output json`
+- `gw tools call <name> --json <object> --output json`
+- `gw call <name> --json-file <path> --output json`
+- `gw process start <program> --json-file <path> --output json`
+- `gw process view <processID> --seq 0 --output json`
+- `gw process input <processID> --text <text> --seq-file <path> --output json`
+- `gw run <program> --json-file <path>`
 
-Local process execution via `gwrun run` is intentionally deferred.
+Agents should use `process start`, `process view`, and `process input` for
+remote processes. Humans can use `gw run` for terminal-style interactive IO.
 
 ## License
 
@@ -37,7 +39,7 @@ C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=
 ```
 
 To run the executable directly from PowerShell without changing `PATH`, copy
-the required runtime DLLs and CA certificate bundle next to `gwrun.exe`:
+the required runtime DLLs and CA certificate bundle next to `gw.exe`:
 
 ```powershell
 C:\msys64\usr\bin\bash.exe -lc "cd /c/Users/gpm/Documents/GWExtra/gwrun && PATH=/ucrt64/bin:`$PATH make copy-runtime"
@@ -47,19 +49,19 @@ Alternatively, run the executable with the UCRT runtime on `PATH`:
 
 ```powershell
 $env:PATH='C:\msys64\ucrt64\bin;' + $env:PATH
-.\gwrun.exe version --output json
+.\gw.exe version --output json
 ```
 
 ## Auth
 
-For now, `gwrun` expects Basic auth to be supplied as a full Authorization
+For now, `gw` expects Basic auth to be supplied as a full Authorization
 header through:
 
 ```sh
 GRIDWHALE_AUTH_HEADER="Basic ..."
 ```
 
-If `GRIDWHALE_AUTH_HEADER` is not set, `gwrun` prompts for a username and
+If `GRIDWHALE_AUTH_HEADER` is not set, `gw` prompts for a username and
 password and uses those credentials for Basic auth during the current process.
 The password prompt disables terminal echo when the terminal supports it.
 
@@ -72,19 +74,19 @@ https://dev.gridwhale.io/mcp/
 Override it with:
 
 ```sh
-gwrun --server https://dev.gridwhale.io/mcp/ tools list --output json
+gw --server https://dev.gridwhale.io/mcp/ tools list --output json
 ```
 
 For complex arguments, prefer `--json-file` so shells do not rewrite JSON
 quoting:
 
 ```sh
-gwrun call NUEG3K9Y.HelloWorld --json-file args.json --output json
+gw call NUEG3K9Y.HelloWorld --json-file args.json --output json
 ```
 
 ## Remote Processes
 
-`gwrun process` uses the GridWhale process endpoints:
+`gw process` uses the GridWhale process endpoints:
 
 - `/mcp/processStart`
 - `/mcp/processView`
@@ -93,31 +95,35 @@ gwrun call NUEG3K9Y.HelloWorld --json-file args.json --output json
 Start a process:
 
 ```sh
-gwrun process start NUEG3K9Y.HelloWorld --json-file args.json --output json
+gw process start NUEG3K9Y.HelloWorld --json-file args.json --output json
 ```
 
 Poll for a process view. The sequence value is JSON; use `0` for the first
 view and pass later `$Seq` values back exactly as returned:
 
 ```sh
-gwrun process view <processID> --seq 0 --output json
+gw process view <processID> --seq 0 --output json
 ```
 
 When a view returns an `INPUT.seq`, send console input with that sequence:
 
 ```sh
-gwrun process input <processID> --text "42" --seq '["AEON2011:ipInteger:v1","..."]' --output json
+gw process input <processID> --text "42" --seq '["AEON2011:ipInteger:v1","..."]' --output json
 ```
+
+After input, use the `$Seq` returned by `process input` for the next
+`process view`. That skips the console echo already handled by the submitting
+client while preserving it in the process history for later viewers.
 
 On shells that rewrite quotes in JSON arguments, write the sequence JSON to a
 file and use `--seq-file`:
 
 ```sh
-gwrun process input <processID> --text "42" --seq-file seq.json --output json
+gw process input <processID> --text "42" --seq-file seq.json --output json
 ```
 
 For an interactive console loop, use:
 
 ```sh
-gwrun process attach NUEG3K9Y.HelloWorld --json-file args.json
+gw run NUEG3K9Y.HelloWorld --json-file args.json
 ```

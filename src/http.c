@@ -84,7 +84,7 @@ int http_post_json_url(const GwOptions *opts, const char *url, const char *body,
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_body);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response->body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, opts->timeout_ms > 0 ? opts->timeout_ms : 30000L);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "gwrun/" GWRUN_VERSION);
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "gw/" GWRUN_VERSION);
 
 	ca_bundle = default_ca_bundle();
 	if (ca_bundle) {

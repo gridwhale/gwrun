@@ -4,17 +4,26 @@ LDLIBS ?= -lcurl
 
 SRC := $(wildcard src/*.c)
 OBJ := $(SRC:.c=.o)
-BIN := gwrun
+BIN := gw
+ALIAS := gridwhale
 
 .PHONY: all clean copy-runtime
 
-all: $(BIN)
+all: $(BIN) $(ALIAS)
 
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDLIBS)
 
+$(ALIAS): $(BIN)
+	@if [ -f "$(BIN).exe" ]; then \
+		cp "$(BIN).exe" "$@.exe"; \
+	else \
+		cp "$(BIN)" "$@"; \
+	fi
+	@touch "$@"
+
 clean:
-	rm -f $(OBJ) $(BIN)
+	rm -f $(OBJ) $(BIN) $(BIN).exe $(ALIAS) $(ALIAS).exe gwrun gwrun.exe
 
 copy-runtime: $(BIN)
 	@if command -v ldd >/dev/null 2>&1; then \

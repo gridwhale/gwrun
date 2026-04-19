@@ -13,7 +13,7 @@ static int parse_global_option(GwOptions *opts, int argc, char **argv, int *i)
 {
 	if (is_option(argv[*i], "--server")) {
 		if (*i + 1 >= argc) {
-			fprintf(stderr, "gwrun: --server requires a value\n");
+			fprintf(stderr, "gw: --server requires a value\n");
 			return 0;
 		}
 		opts->server = argv[++(*i)];
@@ -21,24 +21,24 @@ static int parse_global_option(GwOptions *opts, int argc, char **argv, int *i)
 	}
 	if (is_option(argv[*i], "--output")) {
 		if (*i + 1 >= argc) {
-			fprintf(stderr, "gwrun: --output requires a value\n");
+			fprintf(stderr, "gw: --output requires a value\n");
 			return 0;
 		}
 		opts->output = argv[++(*i)];
 		if (strcmp(opts->output, "text") != 0 && strcmp(opts->output, "json") != 0) {
-			fprintf(stderr, "gwrun: unsupported output: %s\n", opts->output);
+			fprintf(stderr, "gw: unsupported output: %s\n", opts->output);
 			return 0;
 		}
 		return 1;
 	}
 	if (is_option(argv[*i], "--timeout")) {
 		if (*i + 1 >= argc) {
-			fprintf(stderr, "gwrun: --timeout requires milliseconds for v1\n");
+			fprintf(stderr, "gw: --timeout requires milliseconds for v1\n");
 			return 0;
 		}
 		opts->timeout_ms = atol(argv[++(*i)]);
 		if (opts->timeout_ms <= 0) {
-			fprintf(stderr, "gwrun: --timeout must be a positive millisecond value in v1\n");
+			fprintf(stderr, "gw: --timeout must be a positive millisecond value in v1\n");
 			return 0;
 		}
 		return 1;
@@ -60,7 +60,7 @@ static int dispatch(int argc, char **argv)
 
 	cmdv = (char **)calloc((size_t)argc, sizeof(char *));
 	if (!cmdv) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -100,20 +100,26 @@ static int dispatch(int argc, char **argv)
 		return code;
 	}
 
+	if (strcmp(cmdv[0], "manifest") == 0) {
+		int code = command_agent_manifest(&opts);
+		free(cmdv);
+		return code;
+	}
+
 	if (strcmp(cmdv[0], "agent") == 0) {
 		if (cmdc > 1 && strcmp(cmdv[1], "manifest") == 0) {
 			int code = command_agent_manifest(&opts);
 			free(cmdv);
 			return code;
 		}
-		fprintf(stderr, "gwrun: expected `agent manifest`\n");
+		fprintf(stderr, "gw: expected `manifest`\n");
 		free(cmdv);
 		return 2;
 	}
 
 	if (strcmp(cmdv[0], "tools") == 0) {
 		if (cmdc < 2) {
-			fprintf(stderr, "gwrun: expected tools subcommand\n");
+			fprintf(stderr, "gw: expected tools subcommand\n");
 			free(cmdv);
 			return 2;
 		}
@@ -124,7 +130,7 @@ static int dispatch(int argc, char **argv)
 		}
 		if (strcmp(cmdv[1], "describe") == 0) {
 			if (cmdc < 3) {
-				fprintf(stderr, "gwrun: tools describe requires a tool name\n");
+				fprintf(stderr, "gw: tools describe requires a tool name\n");
 				free(cmdv);
 				return 2;
 			}
@@ -134,7 +140,61 @@ static int dispatch(int argc, char **argv)
 				return code;
 			}
 		}
-		fprintf(stderr, "gwrun: unknown tools subcommand: %s\n", cmdv[1]);
+		if (strcmp(cmdv[1], "call") == 0) {
+			const char *tool_name;
+			const char *json = NULL;
+			char *json_file_data = NULL;
+			char error[256];
+			int j;
+			int code;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: tools call requires a tool name\n");
+				free(cmdv);
+				return 2;
+			}
+			tool_name = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--json") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --json requires a value\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--json-file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --json-file requires a path\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!json_file_data) {
+						fprintf(stderr, "gw: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					json = json_file_data;
+				} else {
+					fprintf(stderr, "gw: unknown tools call option: %s\n", cmdv[j]);
+					free(json_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+
+			if (!json) {
+				json = "{}";
+			}
+
+			code = command_call(&opts, tool_name, json);
+			free(json_file_data);
+			free(cmdv);
+			return code;
+		}
+		fprintf(stderr, "gw: unknown tools subcommand: %s\n", cmdv[1]);
 		free(cmdv);
 		return 2;
 	}
@@ -148,7 +208,7 @@ static int dispatch(int argc, char **argv)
 		int code;
 
 		if (cmdc < 2) {
-			fprintf(stderr, "gwrun: call requires a tool name\n");
+			fprintf(stderr, "gw: call requires a tool name\n");
 			free(cmdv);
 			return 2;
 		}
@@ -156,7 +216,7 @@ static int dispatch(int argc, char **argv)
 		for (j = 2; j < cmdc; j++) {
 			if (strcmp(cmdv[j], "--json") == 0) {
 				if (j + 1 >= cmdc) {
-					fprintf(stderr, "gwrun: --json requires a value\n");
+					fprintf(stderr, "gw: --json requires a value\n");
 					free(json_file_data);
 					free(cmdv);
 					return 2;
@@ -164,20 +224,20 @@ static int dispatch(int argc, char **argv)
 				json = cmdv[++j];
 			} else if (strcmp(cmdv[j], "--json-file") == 0) {
 				if (j + 1 >= cmdc) {
-					fprintf(stderr, "gwrun: --json-file requires a path\n");
+					fprintf(stderr, "gw: --json-file requires a path\n");
 					free(json_file_data);
 					free(cmdv);
 					return 2;
 				}
 				json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
 				if (!json_file_data) {
-					fprintf(stderr, "gwrun: %s\n", error);
+					fprintf(stderr, "gw: %s\n", error);
 					free(cmdv);
 					return 2;
 				}
 				json = json_file_data;
 			} else {
-				fprintf(stderr, "gwrun: unknown call option: %s\n", cmdv[j]);
+				fprintf(stderr, "gw: unknown call option: %s\n", cmdv[j]);
 				free(json_file_data);
 				free(cmdv);
 				return 2;
@@ -194,10 +254,60 @@ static int dispatch(int argc, char **argv)
 		return code;
 	}
 
+	if (strcmp(cmdv[0], "run") == 0) {
+		const char *program;
+		const char *json = "{}";
+		char *json_file_data = NULL;
+		char error[256];
+		int j;
+		int code;
+
+		if (cmdc < 2) {
+			fprintf(stderr, "gw: run requires a program name\n");
+			free(cmdv);
+			return 2;
+		}
+		program = cmdv[1];
+		for (j = 2; j < cmdc; j++) {
+			if (strcmp(cmdv[j], "--json") == 0) {
+				if (j + 1 >= cmdc) {
+					fprintf(stderr, "gw: --json requires a value\n");
+					free(json_file_data);
+					free(cmdv);
+					return 2;
+				}
+				json = cmdv[++j];
+			} else if (strcmp(cmdv[j], "--json-file") == 0) {
+				if (j + 1 >= cmdc) {
+					fprintf(stderr, "gw: --json-file requires a path\n");
+					free(json_file_data);
+					free(cmdv);
+					return 2;
+				}
+				json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+				if (!json_file_data) {
+					fprintf(stderr, "gw: %s\n", error);
+					free(cmdv);
+					return 2;
+				}
+				json = json_file_data;
+			} else {
+				fprintf(stderr, "gw: unknown run option: %s\n", cmdv[j]);
+				free(json_file_data);
+				free(cmdv);
+				return 2;
+			}
+		}
+		code = command_process_attach(&opts, program, json);
+		free(json_file_data);
+		free(cmdv);
+		return code;
+	}
+
 	if (strcmp(cmdv[0], "process") == 0) {
 		int code;
 		if (cmdc < 2) {
-			fprintf(stderr, "gwrun: expected process subcommand\n");
+			fprintf(stderr, "gw: expected process subcommand\n");
 			free(cmdv);
 			return 2;
 		}
@@ -210,7 +320,7 @@ static int dispatch(int argc, char **argv)
 			int j;
 
 			if (cmdc < 3) {
-				fprintf(stderr, "gwrun: process %s requires a program name\n", cmdv[1]);
+				fprintf(stderr, "gw: process %s requires a program name\n", cmdv[1]);
 				free(cmdv);
 				return 2;
 			}
@@ -218,7 +328,7 @@ static int dispatch(int argc, char **argv)
 			for (j = 3; j < cmdc; j++) {
 				if (strcmp(cmdv[j], "--json") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --json requires a value\n");
+						fprintf(stderr, "gw: --json requires a value\n");
 						free(json_file_data);
 						free(cmdv);
 						return 2;
@@ -226,20 +336,20 @@ static int dispatch(int argc, char **argv)
 					json = cmdv[++j];
 				} else if (strcmp(cmdv[j], "--json-file") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --json-file requires a path\n");
+						fprintf(stderr, "gw: --json-file requires a path\n");
 						free(json_file_data);
 						free(cmdv);
 						return 2;
 					}
 					json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!json_file_data) {
-						fprintf(stderr, "gwrun: %s\n", error);
+						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
 						return 2;
 					}
 					json = json_file_data;
 				} else {
-					fprintf(stderr, "gwrun: unknown process %s option: %s\n", cmdv[1], cmdv[j]);
+					fprintf(stderr, "gw: unknown process %s option: %s\n", cmdv[1], cmdv[j]);
 					free(json_file_data);
 					free(cmdv);
 					return 2;
@@ -264,7 +374,7 @@ static int dispatch(int argc, char **argv)
 			int j;
 
 			if (cmdc < 3) {
-				fprintf(stderr, "gwrun: process view requires a process ID\n");
+				fprintf(stderr, "gw: process view requires a process ID\n");
 				free(cmdv);
 				return 2;
 			}
@@ -272,7 +382,7 @@ static int dispatch(int argc, char **argv)
 			for (j = 3; j < cmdc; j++) {
 				if (strcmp(cmdv[j], "--seq") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --seq requires a JSON value\n");
+						fprintf(stderr, "gw: --seq requires a JSON value\n");
 						free(seq_file_data);
 						free(cmdv);
 						return 2;
@@ -280,20 +390,20 @@ static int dispatch(int argc, char **argv)
 					seq = cmdv[++j];
 				} else if (strcmp(cmdv[j], "--seq-file") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --seq-file requires a path\n");
+						fprintf(stderr, "gw: --seq-file requires a path\n");
 						free(seq_file_data);
 						free(cmdv);
 						return 2;
 					}
 					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!seq_file_data) {
-						fprintf(stderr, "gwrun: %s\n", error);
+						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
 						return 2;
 					}
 					seq = seq_file_data;
 				} else {
-					fprintf(stderr, "gwrun: unknown process view option: %s\n", cmdv[j]);
+					fprintf(stderr, "gw: unknown process view option: %s\n", cmdv[j]);
 					free(seq_file_data);
 					free(cmdv);
 					return 2;
@@ -314,7 +424,7 @@ static int dispatch(int argc, char **argv)
 			int j;
 
 			if (cmdc < 3) {
-				fprintf(stderr, "gwrun: process input requires a process ID\n");
+				fprintf(stderr, "gw: process input requires a process ID\n");
 				free(cmdv);
 				return 2;
 			}
@@ -322,7 +432,7 @@ static int dispatch(int argc, char **argv)
 			for (j = 3; j < cmdc; j++) {
 				if (strcmp(cmdv[j], "--text") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --text requires a value\n");
+						fprintf(stderr, "gw: --text requires a value\n");
 						free(seq_file_data);
 						free(cmdv);
 						return 2;
@@ -330,7 +440,7 @@ static int dispatch(int argc, char **argv)
 					text = cmdv[++j];
 				} else if (strcmp(cmdv[j], "--seq") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --seq requires a JSON value\n");
+						fprintf(stderr, "gw: --seq requires a JSON value\n");
 						free(seq_file_data);
 						free(cmdv);
 						return 2;
@@ -338,27 +448,27 @@ static int dispatch(int argc, char **argv)
 					seq = cmdv[++j];
 				} else if (strcmp(cmdv[j], "--seq-file") == 0) {
 					if (j + 1 >= cmdc) {
-						fprintf(stderr, "gwrun: --seq-file requires a path\n");
+						fprintf(stderr, "gw: --seq-file requires a path\n");
 						free(seq_file_data);
 						free(cmdv);
 						return 2;
 					}
 					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!seq_file_data) {
-						fprintf(stderr, "gwrun: %s\n", error);
+						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
 						return 2;
 					}
 					seq = seq_file_data;
 				} else {
-					fprintf(stderr, "gwrun: unknown process input option: %s\n", cmdv[j]);
+					fprintf(stderr, "gw: unknown process input option: %s\n", cmdv[j]);
 					free(seq_file_data);
 					free(cmdv);
 					return 2;
 				}
 			}
 			if (!text || !seq) {
-				fprintf(stderr, "gwrun: process input requires --text and --seq\n");
+				fprintf(stderr, "gw: process input requires --text and --seq or --seq-file\n");
 				free(seq_file_data);
 				free(cmdv);
 				return 2;
@@ -369,12 +479,12 @@ static int dispatch(int argc, char **argv)
 			return code;
 		}
 
-		fprintf(stderr, "gwrun: unknown process subcommand: %s\n", cmdv[1]);
+		fprintf(stderr, "gw: unknown process subcommand: %s\n", cmdv[1]);
 		free(cmdv);
 		return 2;
 	}
 
-	fprintf(stderr, "gwrun: unknown command: %s\n", cmdv[0]);
+	fprintf(stderr, "gw: unknown command: %s\n", cmdv[0]);
 	free(cmdv);
 	return 2;
 }

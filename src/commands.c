@@ -405,7 +405,7 @@ static int print_remote_result(const GwOptions *opts, const char *command, GwHtt
 		printf("}\n");
 		free(err);
 	} else {
-		fprintf(stderr, "gwrun: remote request failed");
+		fprintf(stderr, "gw: remote request failed");
 		if (res->status) {
 			fprintf(stderr, " (HTTP %ld)", res->status);
 		}
@@ -579,29 +579,29 @@ static int print_json_string_array_member(const char *json, const char *member_n
 
 void print_usage(void)
 {
-	printf("GridWhale Runner %s\n\n", GWRUN_VERSION);
+	printf("GridWhale CLI %s\n\n", GWRUN_VERSION);
 	printf("Usage:\n");
-	printf("  gwrun [--server URL] [--output text|json] version\n");
-	printf("  gwrun [--server URL] [--output text|json] check\n");
-	printf("  gwrun [--server URL] [--output text|json] agent manifest\n");
-	printf("  gwrun [--server URL] [--output text|json] tools list\n");
-	printf("  gwrun [--server URL] [--output text|json] tools describe <name>\n");
-	printf("  gwrun [--server URL] [--output text|json] call <name> --json <object>\n");
-	printf("  gwrun [--server URL] [--output text|json] call <name> --json-file <path>\n");
-	printf("  gwrun [--server URL] [--output text|json] process start <program> --json <object>\n");
-	printf("  gwrun [--server URL] [--output text|json] process view <processID> --seq <json>\n");
-	printf("  gwrun [--server URL] [--output text|json] process input <processID> --text <text> --seq <json>\n");
-	printf("  gwrun [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
-	printf("  gwrun [--server URL] process attach <program> --json <object>\n\n");
-	printf("Agents: run `gwrun agent manifest --output json` for discovery.\n");
+	printf("  gw [--server URL] [--output text|json] version\n");
+	printf("  gw [--server URL] [--output text|json] check\n");
+	printf("  gw [--server URL] [--output text|json] manifest\n");
+	printf("  gw [--server URL] [--output text|json] tools list\n");
+	printf("  gw [--server URL] [--output text|json] tools describe <name>\n");
+	printf("  gw [--server URL] [--output text|json] tools call <name> --json <object>\n");
+	printf("  gw [--server URL] [--output text|json] call <name> --json-file <path>\n");
+	printf("  gw [--server URL] [--output text|json] process start <program> --json <object>\n");
+	printf("  gw [--server URL] [--output text|json] process view <processID> --seq <json>\n");
+	printf("  gw [--server URL] [--output text|json] process view <processID> --seq-file <path>\n");
+	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
+	printf("  gw [--server URL] run <program> --json-file <path>\n\n");
+	printf("Agents: run `gw manifest --output json` for discovery.\n");
 }
 
 int command_version(const GwOptions *opts)
 {
 	if (wants_json(opts)) {
-		printf("{\"ok\":true,\"gwrun\":{\"version\":\"%s\"}}\n", GWRUN_VERSION);
+		printf("{\"ok\":true,\"gw\":{\"version\":\"%s\"}}\n", GWRUN_VERSION);
 	} else {
-		printf("gwrun %s\n", GWRUN_VERSION);
+		printf("gw %s\n", GWRUN_VERSION);
 	}
 	return 0;
 }
@@ -701,7 +701,7 @@ int command_call(const GwOptions *opts, const char *tool_name, const char *args_
 
 	tool_json = json_escape_alloc(tool_name);
 	if (!tool_json) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -715,7 +715,7 @@ int command_call(const GwOptions *opts, const char *tool_name, const char *args_
 
 	if (!ok) {
 		buffer_free(&params);
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -739,7 +739,7 @@ int command_process_start(const GwOptions *opts, const char *program, const char
 	int ok;
 
 	if (!build_process_start_body(&body, program, args_json)) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -763,7 +763,7 @@ int command_process_view(const GwOptions *opts, const char *process_id, const ch
 	int ok;
 
 	if (!build_process_view_body(&body, process_id, seq_json ? seq_json : "0")) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -787,7 +787,7 @@ int command_process_input(const GwOptions *opts, const char *process_id, const c
 	int ok;
 
 	if (!build_process_input_body(&body, process_id, input_text, seq_json ? seq_json : "0")) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 
@@ -811,7 +811,7 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 	int exit_code = 0;
 
 	if (!build_process_start_body(&body, program, args_json)) {
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 	if (!process_post(opts, "processStart", body.data, &res)) {
@@ -824,7 +824,7 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 
 	process_id = json_string_dup(res.body.data, NULL);
 	if (!process_id) {
-		fprintf(stderr, "gwrun: processStart did not return a process ID string\n");
+		fprintf(stderr, "gw: processStart did not return a process ID string\n");
 		http_response_free(&res);
 		return 3;
 	}
@@ -833,7 +833,7 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 	seq = (char *)malloc(2);
 	if (!seq) {
 		free(process_id);
-		fprintf(stderr, "gwrun: out of memory\n");
+		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
 	strcpy(seq, "0");
@@ -956,7 +956,7 @@ int command_agent_manifest(const GwOptions *opts)
 
 	if (wants_json(opts)) {
 		char *server = json_escape_alloc(opts->server);
-		printf("{\"ok\":%s,\"command\":\"agent.manifest\",\"gwrun\":{\"version\":\"%s\",\"protocolVersion\":\"1\"},",
+		printf("{\"ok\":%s,\"command\":\"manifest\",\"gw\":{\"version\":\"%s\",\"protocolVersion\":\"1\"},",
 			ok ? "true" : "false", GWRUN_VERSION);
 		printf("\"server\":{\"url\":%s,\"reachable\":%s,\"auth\":{\"configured\":%s,\"source\":\"GRIDWHALE_AUTH_HEADER\",\"type\":\"Basic\",\"redacted\":\"Basic ***\"}},",
 			server ? server : "\"\"",
@@ -965,12 +965,14 @@ int command_agent_manifest(const GwOptions *opts)
 		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
-		printf("{\"name\":\"tools.list\",\"argv\":[\"gwrun\",\"tools\",\"list\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"tools.describe\",\"argv\":[\"gwrun\",\"tools\",\"describe\",\"<name>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"call\",\"argv\":[\"gwrun\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"process.start\",\"argv\":[\"gwrun\",\"process\",\"start\",\"<program>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"process.view\",\"argv\":[\"gwrun\",\"process\",\"view\",\"<processID>\",\"--seq\",\"<json>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"process.input\",\"argv\":[\"gwrun\",\"process\",\"input\",\"<processID>\",\"--text\",\"<text>\",\"--seq\",\"<json>\",\"--output\",\"json\"]}");
+		printf("{\"name\":\"tools.list\",\"argv\":[\"gw\",\"tools\",\"list\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"tools.describe\",\"argv\":[\"gw\",\"tools\",\"describe\",\"<name>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"tools.call\",\"argv\":[\"gw\",\"tools\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"call\",\"argv\":[\"gw\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.start\",\"argv\":[\"gw\",\"process\",\"start\",\"<program>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.view\",\"argv\":[\"gw\",\"process\",\"view\",\"<processID>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.input\",\"argv\":[\"gw\",\"process\",\"input\",\"<processID>\",\"--text\",\"<text>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"run\",\"argv\":[\"gw\",\"run\",\"<program>\",\"--json-file\",\"<path>\"]}");
 		printf("],\"durationMs\":%ld,\"toolDiscoveryResult\":", duration);
 		if (ok) {
 			printf("%s", res.body.data ? res.body.data : "null");
@@ -985,11 +987,11 @@ int command_agent_manifest(const GwOptions *opts)
 		printf("}\n");
 		free(server);
 	} else {
-		printf("gwrun %s\n", GWRUN_VERSION);
+		printf("gw %s\n", GWRUN_VERSION);
 		printf("server: %s\n", opts->server);
 		printf("auth: %s\n", auth_header_configured() ? "configured" : "missing");
 		printf("remote tools: %s\n", ok ? "available" : "unavailable");
-		printf("agent discovery: gwrun agent manifest --output json\n");
+		printf("agent discovery: gw manifest --output json\n");
 	}
 
 	http_response_free(&res);
