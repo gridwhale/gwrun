@@ -211,6 +211,184 @@ static char *json_object_path_dup(const char *json, const char *object_name, con
 	return value;
 }
 
+static char *json_string_dup(const char *quote, const char **end_out);
+
+static unsigned int read_u32_le(const unsigned char *p)
+{
+	return ((unsigned int)p[0]) |
+		((unsigned int)p[1] << 8) |
+		((unsigned int)p[2] << 16) |
+		((unsigned int)p[3] << 24);
+}
+
+static int base64_value(char ch)
+{
+	if (ch >= 'A' && ch <= 'Z') return ch - 'A';
+	if (ch >= 'a' && ch <= 'z') return ch - 'a' + 26;
+	if (ch >= '0' && ch <= '9') return ch - '0' + 52;
+	if (ch == '+') return 62;
+	if (ch == '/') return 63;
+	return -1;
+}
+
+static unsigned char *base64_decode_alloc(const char *text, size_t *len_out)
+{
+	size_t len = strlen(text);
+	size_t cap = (len / 4) * 3 + 3;
+	unsigned char *out = (unsigned char *)malloc(cap);
+	size_t out_len = 0;
+	int vals[4];
+	int n = 0;
+	size_t i;
+
+	if (!out) {
+		return NULL;
+	}
+
+	for (i = 0; i < len; i++) {
+		int v;
+		char ch = text[i];
+
+		if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+			continue;
+		}
+		if (ch == '=') {
+			vals[n++] = -2;
+		} else {
+			v = base64_value(ch);
+			if (v < 0) {
+				free(out);
+				return NULL;
+			}
+			vals[n++] = v;
+		}
+
+		if (n == 4) {
+			if (vals[0] < 0 || vals[1] < 0) {
+				free(out);
+				return NULL;
+			}
+			out[out_len++] = (unsigned char)((vals[0] << 2) | (vals[1] >> 4));
+			if (vals[2] != -2) {
+				if (vals[2] < 0) {
+					free(out);
+					return NULL;
+				}
+				out[out_len++] = (unsigned char)(((vals[1] & 15) << 4) | (vals[2] >> 2));
+			}
+			if (vals[3] != -2) {
+				if (vals[2] < 0 || vals[3] < 0) {
+					free(out);
+					return NULL;
+				}
+				out[out_len++] = (unsigned char)(((vals[2] & 3) << 6) | vals[3]);
+			}
+			n = 0;
+		}
+	}
+
+	if (n != 0) {
+		free(out);
+		return NULL;
+	}
+	*len_out = out_len;
+	return out;
+}
+
+static char *decode_aeon_text_lines_alloc(const char *encoded)
+{
+	unsigned char *bytes;
+	size_t len;
+	size_t pos;
+	unsigned int version;
+	unsigned int line_count;
+	unsigned int i;
+	GwBuffer out;
+
+	bytes = base64_decode_alloc(encoded, &len);
+	if (!bytes) {
+		return NULL;
+	}
+	if (len < 12) {
+		free(bytes);
+		return NULL;
+	}
+
+	line_count = read_u32_le(bytes);
+	version = read_u32_le(bytes + 4);
+	if (version != 1) {
+		free(bytes);
+		return NULL;
+	}
+
+	buffer_init(&out);
+	pos = 12;
+	for (i = 0; i < line_count; i++) {
+		unsigned int line_len;
+
+		if (pos + 4 > len) {
+			buffer_free(&out);
+			free(bytes);
+			return NULL;
+		}
+		line_len = read_u32_le(bytes + pos);
+		pos += 4;
+		if (pos + line_len > len) {
+			buffer_free(&out);
+			free(bytes);
+			return NULL;
+		}
+		if (i > 0 && !buffer_append_cstr(&out, "\n")) {
+			buffer_free(&out);
+			free(bytes);
+			return NULL;
+		}
+		if (!buffer_append(&out, (const char *)(bytes + pos), line_len)) {
+			buffer_free(&out);
+			free(bytes);
+			return NULL;
+		}
+		pos += line_len;
+		pos = (pos + 3) & ~(size_t)3;
+	}
+
+	free(bytes);
+	if (!out.data && !buffer_append_cstr(&out, "")) {
+		return NULL;
+	}
+	return out.data;
+}
+
+static char *program_read_source_dup(const char *json)
+{
+	static const char marker[] = "\"sourceCode\":[\"AEON2011:textLines:v1\"";
+	const char *p = strstr(json, marker);
+	const char *comma;
+	const char *quote;
+	char *encoded;
+	char *source;
+
+	if (!p) {
+		return NULL;
+	}
+	comma = strchr(p + sizeof(marker) - 1, ',');
+	if (!comma) {
+		return NULL;
+	}
+	quote = strchr(comma, '"');
+	if (!quote) {
+		return NULL;
+	}
+
+	encoded = json_string_dup(quote, NULL);
+	if (!encoded) {
+		return NULL;
+	}
+	source = decode_aeon_text_lines_alloc(encoded);
+	free(encoded);
+	return source;
+}
+
 static char *json_string_dup(const char *quote, const char **end_out)
 {
 	GwBuffer out;
@@ -1038,10 +1216,9 @@ static char *find_tool_name_by_suffix(const char *json, const char *suffix)
 	return NULL;
 }
 
-static int command_call_tool_suffix(const GwOptions *opts, const char *command, const char *suffix, const char *args_json)
+static int call_tool_suffix_response(const GwOptions *opts, const char *command, const char *suffix, const char *args_json, GwHttpResponse *call_res, long *duration_out)
 {
 	GwHttpResponse list_res;
-	GwHttpResponse call_res;
 	GwBuffer params;
 	char *tool_name;
 	char *tool_json;
@@ -1053,6 +1230,9 @@ static int command_call_tool_suffix(const GwOptions *opts, const char *command, 
 	ok = mcp_call(opts, "tools/list", "{}", &list_res);
 	if (!ok) {
 		duration = monotonic_ms() - start;
+		if (duration_out) {
+			*duration_out = duration;
+		}
 		code = print_remote_result(opts, command, &list_res, duration);
 		http_response_free(&list_res);
 		return code;
@@ -1092,11 +1272,25 @@ static int command_call_tool_suffix(const GwOptions *opts, const char *command, 
 		return 4;
 	}
 
-	ok = mcp_call(opts, "tools/call", params.data, &call_res);
+	ok = mcp_call(opts, "tools/call", params.data, call_res);
 	duration = monotonic_ms() - start;
+	if (duration_out) {
+		*duration_out = duration;
+	}
 	buffer_free(&params);
 	(void)ok;
+	return 0;
+}
 
+static int command_call_tool_suffix(const GwOptions *opts, const char *command, const char *suffix, const char *args_json)
+{
+	GwHttpResponse call_res;
+	long duration = 0;
+	int code = call_tool_suffix_response(opts, command, suffix, args_json, &call_res, &duration);
+
+	if (code != 0) {
+		return code;
+	}
 	code = print_remote_result(opts, command, &call_res, duration);
 	http_response_free(&call_res);
 	return code;
@@ -1163,7 +1357,9 @@ int command_program_write(const GwOptions *opts, const char *program_id, const c
 int command_program_read(const GwOptions *opts, const char *program_id)
 {
 	GwBuffer args;
+	GwHttpResponse res;
 	char *id_json = json_escape_alloc(program_id);
+	long duration = 0;
 	int ok;
 	int code;
 
@@ -1181,8 +1377,28 @@ int command_program_read(const GwOptions *opts, const char *program_id)
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
-	code = command_call_tool_suffix(opts, "program.read", "program_read", args.data);
+	code = call_tool_suffix_response(opts, "program.read", "program_read", args.data, &res, &duration);
 	buffer_free(&args);
+	if (code != 0) {
+		return code;
+	}
+
+	if (res.status >= 200 && res.status < 300 && !wants_json(opts)) {
+		char *source = program_read_source_dup(res.body.data ? res.body.data : "");
+		if (source) {
+			printf("%s", source);
+			if (source[0] && source[strlen(source) - 1] != '\n') {
+				printf("\n");
+			}
+			free(source);
+			code = 0;
+		} else {
+			code = print_remote_result(opts, "program.read", &res, duration);
+		}
+	} else {
+		code = print_remote_result(opts, "program.read", &res, duration);
+	}
+	http_response_free(&res);
 	return code;
 }
 
