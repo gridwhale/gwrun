@@ -33,6 +33,16 @@ gw tools list --output json
 gw tools describe <tool> --output json
 ```
 
+## Resources And Docs
+
+Use resources for read-only documentation, examples, schemas, and other
+context exposed by GridWhale:
+
+```text
+gw resources list --output json
+gw resources read <uri> --output text
+```
+
 ## Tool Calls
 
 Prefer JSON files so shells do not rewrite quotes:

@@ -580,6 +580,159 @@ static int print_json_string_array_member(const char *json, const char *member_n
 	return count;
 }
 
+static int print_resources_list_text(const char *json)
+{
+	const char *resources = strstr(json, "\"resources\"");
+	const char *scan;
+	int count = 0;
+
+	printf("Resources:\n");
+	if (!resources) {
+		printf("  (none)\n");
+		return 0;
+	}
+
+	scan = strchr(resources, '[');
+	if (!scan) {
+		printf("  (none)\n");
+		return 0;
+	}
+	scan++;
+
+	while (*scan) {
+		const char *object_start;
+		const char *object_end;
+		const char *uri_key;
+		const char *uri_colon;
+		const char *uri_quote;
+		const char *name_key;
+		char *uri;
+		char *name = NULL;
+
+		while (*scan && *scan != '{' && *scan != ']') {
+			scan++;
+		}
+		if (*scan == ']') {
+			break;
+		}
+		if (*scan != '{') {
+			break;
+		}
+
+		object_start = scan;
+		object_end = find_matching_object_end(object_start);
+		if (!object_end) {
+			break;
+		}
+
+		uri_key = find_range(object_start, object_end, "\"uri\"");
+		if (!uri_key) {
+			scan = object_end;
+			continue;
+		}
+		uri_colon = strchr(uri_key, ':');
+		uri_quote = uri_colon ? strchr(uri_colon, '"') : NULL;
+		if (!uri_quote || uri_quote >= object_end) {
+			scan = object_end;
+			continue;
+		}
+
+		uri = json_string_dup(uri_quote, NULL);
+		if (!uri) {
+			break;
+		}
+
+		name_key = find_range(object_start, object_end, "\"name\"");
+		if (name_key) {
+			const char *name_colon = strchr(name_key, ':');
+			const char *name_quote = name_colon ? strchr(name_colon, '"') : NULL;
+			if (name_quote && name_quote < object_end) {
+				name = json_string_dup(name_quote, NULL);
+			}
+		}
+
+		printf("  %s", uri);
+		if (name && name[0]) {
+			printf("  %s", name);
+		}
+		putchar('\n');
+		free(uri);
+		free(name);
+		count++;
+		scan = object_end;
+	}
+
+	if (count == 0) {
+		printf("  (none)\n");
+	}
+	return count;
+}
+
+static int print_resource_read_text(const char *json)
+{
+	const char *contents = strstr(json, "\"contents\"");
+	const char *scan;
+	int count = 0;
+
+	if (!contents) {
+		printf("%s\n", json ? json : "");
+		return 0;
+	}
+
+	scan = strchr(contents, '[');
+	if (!scan) {
+		printf("%s\n", json ? json : "");
+		return 0;
+	}
+	scan++;
+
+	while (*scan) {
+		const char *object_start;
+		const char *object_end;
+		const char *text_key;
+		char *text = NULL;
+
+		while (*scan && *scan != '{' && *scan != ']') {
+			scan++;
+		}
+		if (*scan == ']') {
+			break;
+		}
+		if (*scan != '{') {
+			break;
+		}
+
+		object_start = scan;
+		object_end = find_matching_object_end(object_start);
+		if (!object_end) {
+			break;
+		}
+
+		text_key = find_range(object_start, object_end, "\"text\"");
+		if (text_key) {
+			const char *text_colon = strchr(text_key, ':');
+			const char *text_quote = text_colon ? strchr(text_colon, '"') : NULL;
+			if (text_quote && text_quote < object_end) {
+				text = json_string_dup(text_quote, NULL);
+			}
+		}
+		if (text) {
+			fputs(text, stdout);
+			if (text[0] && text[strlen(text) - 1] != '\n') {
+				putchar('\n');
+			}
+			free(text);
+			count++;
+		}
+		scan = object_end;
+	}
+
+	if (count == 0) {
+		printf("%s\n", json ? json : "");
+	}
+	return count;
+}
+
 void print_usage(void)
 {
 	printf("GridWhale CLI %s\n\n", GWRUN_VERSION);
@@ -592,12 +745,14 @@ void print_usage(void)
 	printf("  gw [--server URL] [--output text|json] tools describe <name>\n");
 	printf("  gw [--server URL] [--output text|json] tools call <name> --json <object>\n");
 	printf("  gw [--server URL] [--output text|json] call <name> --json-file <path>\n");
+	printf("  gw [--server URL] [--output text|json] resources list\n");
+	printf("  gw [--server URL] [--output text|json] resources read <uri>\n");
 	printf("  gw [--server URL] [--output text|json] process start <program> --json <object>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq <json>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq-file <path>\n");
 	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
 	printf("  gw [--server URL] run <program> --json-file <path>\n\n");
-	printf("Agents: run `gw manifest --output json` for discovery.\n");
+	printf("Agents: run `gw help agents` for guidance and `gw manifest --output json` for machine-readable discovery.\n");
 }
 
 int command_help(void)
@@ -704,6 +859,73 @@ int command_tools_describe(const GwOptions *opts, const char *name)
 	}
 	http_response_free(&res);
 	return 0;
+}
+
+int command_resources_list(const GwOptions *opts)
+{
+	GwHttpResponse res;
+	long start = monotonic_ms();
+	int ok = mcp_call(opts, "resources/list", "{}", &res);
+	long duration = monotonic_ms() - start;
+	int code;
+	(void)ok;
+
+	if (res.status >= 200 && res.status < 300 && !wants_json(opts)) {
+		printf("Server: %s\n", opts->server);
+		printf("Duration: %ld ms\n", duration);
+		print_resources_list_text(res.body.data ? res.body.data : "");
+		code = 0;
+	} else {
+		code = print_remote_result(opts, "resources.list", &res, duration);
+	}
+
+	http_response_free(&res);
+	return code;
+}
+
+int command_resources_read(const GwOptions *opts, const char *uri)
+{
+	GwBuffer params;
+	GwHttpResponse res;
+	char *uri_json;
+	long start;
+	long duration;
+	int ok;
+	int code;
+
+	uri_json = json_escape_alloc(uri);
+	if (!uri_json) {
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+
+	buffer_init(&params);
+	ok = buffer_append_cstr(&params, "{\"uri\":") &&
+		buffer_append_cstr(&params, uri_json) &&
+		buffer_append_cstr(&params, "}");
+	free(uri_json);
+
+	if (!ok) {
+		buffer_free(&params);
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+
+	start = monotonic_ms();
+	ok = mcp_call(opts, "resources/read", params.data, &res);
+	duration = monotonic_ms() - start;
+	buffer_free(&params);
+	(void)ok;
+
+	if (res.status >= 200 && res.status < 300 && !wants_json(opts)) {
+		print_resource_read_text(res.body.data ? res.body.data : "");
+		code = 0;
+	} else {
+		code = print_remote_result(opts, "resources.read", &res, duration);
+	}
+
+	http_response_free(&res);
+	return code;
 }
 
 int command_call(const GwOptions *opts, const char *tool_name, const char *args_json)
@@ -980,7 +1202,7 @@ int command_agent_manifest(const GwOptions *opts)
 			auth_header_configured() ? "true" : "false");
 		printf("\"auth\":{\"configured\":%s,\"preferredEnv\":\"GRIDWHALE_AUTH_HEADER\",\"interactiveFallback\":true,\"agentGuidance\":\"Set GRIDWHALE_AUTH_HEADER to a full Basic auth value. If local GridWhale MCP config is available, load the Authorization header from that config without printing it.\"},",
 			auth_header_configured() ? "true" : "false");
-		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
+		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"resources\":true,\"resourceRead\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
 		printf("{\"name\":\"help\",\"argv\":[\"gw\",\"help\"]},");
@@ -989,6 +1211,8 @@ int command_agent_manifest(const GwOptions *opts)
 		printf("{\"name\":\"tools.describe\",\"argv\":[\"gw\",\"tools\",\"describe\",\"<name>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"tools.call\",\"argv\":[\"gw\",\"tools\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"call\",\"argv\":[\"gw\",\"call\",\"<name>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"resources.list\",\"argv\":[\"gw\",\"resources\",\"list\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"resources.read\",\"argv\":[\"gw\",\"resources\",\"read\",\"<uri>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"process.start\",\"argv\":[\"gw\",\"process\",\"start\",\"<program>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"process.view\",\"argv\":[\"gw\",\"process\",\"view\",\"<processID>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"process.input\",\"argv\":[\"gw\",\"process\",\"input\",\"<processID>\",\"--text\",\"<text>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");

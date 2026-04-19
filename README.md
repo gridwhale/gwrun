@@ -10,6 +10,8 @@ The first version focuses on remote GridWhale MCP calls:
 - `gw help agents`
 - `gw tools list --output json`
 - `gw tools describe <name> --output json`
+- `gw resources list --output json`
+- `gw resources read <uri> --output text`
 - `gw tools call <name> --json <object> --output json`
 - `gw call <name> --json-file <path> --output json`
 - `gw process start <program> --json-file <path> --output json`
@@ -84,6 +86,16 @@ quoting:
 
 ```sh
 gw call NUEG3K9Y.HelloWorld --json-file args.json --output json
+```
+
+## Resources And Docs
+
+GridWhale can expose read-only docs, examples, schemas, and other context as
+MCP resources:
+
+```sh
+gw resources list --output json
+gw resources read <uri> --output text
 ```
 
 ## Remote Processes

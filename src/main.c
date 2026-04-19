@@ -215,6 +215,34 @@ static int dispatch(int argc, char **argv)
 		return 2;
 	}
 
+	if (strcmp(cmdv[0], "resources") == 0) {
+		if (cmdc < 2) {
+			fprintf(stderr, "gw: expected resources subcommand\n");
+			free(cmdv);
+			return 2;
+		}
+		if (strcmp(cmdv[1], "list") == 0) {
+			int code = command_resources_list(&opts);
+			free(cmdv);
+			return code;
+		}
+		if (strcmp(cmdv[1], "read") == 0) {
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: resources read requires a URI\n");
+				free(cmdv);
+				return 2;
+			}
+			{
+				int code = command_resources_read(&opts, cmdv[2]);
+				free(cmdv);
+				return code;
+			}
+		}
+		fprintf(stderr, "gw: unknown resources subcommand: %s\n", cmdv[1]);
+		free(cmdv);
+		return 2;
+	}
+
 	if (strcmp(cmdv[0], "call") == 0) {
 		const char *tool_name;
 		const char *json = NULL;

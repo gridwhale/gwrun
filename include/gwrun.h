@@ -50,6 +50,8 @@ int command_version(const GwOptions *opts);
 int command_check(const GwOptions *opts);
 int command_tools_list(const GwOptions *opts);
 int command_tools_describe(const GwOptions *opts, const char *name);
+int command_resources_list(const GwOptions *opts);
+int command_resources_read(const GwOptions *opts, const char *uri);
 int command_call(const GwOptions *opts, const char *tool_name, const char *args_json);
 int command_agent_manifest(const GwOptions *opts);
 int command_process_start(const GwOptions *opts, const char *program, const char *args_json);
