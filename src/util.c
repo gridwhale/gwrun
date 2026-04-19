@@ -168,6 +168,25 @@ char *read_file_alloc(const char *path, char *error, size_t error_len)
 	return data;
 }
 
+char *read_json_file_alloc(const char *path, char *error, size_t error_len)
+{
+	char *data = read_file_alloc(path, error, error_len);
+	size_t len;
+
+	if (!data) {
+		return NULL;
+	}
+
+	len = strlen(data);
+	if (len >= 3 &&
+		(unsigned char)data[0] == 0xef &&
+		(unsigned char)data[1] == 0xbb &&
+		(unsigned char)data[2] == 0xbf) {
+		memmove(data, data + 3, len - 2);
+	}
+	return data;
+}
+
 long monotonic_ms(void)
 {
 #ifdef _WIN32

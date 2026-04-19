@@ -53,6 +53,25 @@ gw call <tool> --json-file args.json --output json
 ```
 
 `gw call` is a short alias for `gw tools call`.
+JSON files may be UTF-8 with or without a BOM; `gw` strips a leading UTF-8 BOM
+before sending.
+
+## Program Authoring
+
+Use program wrappers for common program workflows. They construct the tool JSON
+for you and avoid shell-specific JSON mistakes:
+
+```text
+gw program create --name Hello --output json
+gw program write <programID> --file hello.grid --output json
+gw program read <programID> --output text
+gw program compile <programID> --output json
+gw program run <programID> --json-file args.json --output json
+```
+
+Use `gw process start <programID.entryPoint>` for interactive entry points.
+`process start` expects `PROGRAMID.entryPoint`, for example
+`NUEG3K9Y.HelloWorld`; bare program IDs and `/file/ID` paths are not accepted.
 
 ## Remote Processes
 

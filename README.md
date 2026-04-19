@@ -12,6 +12,10 @@ The first version focuses on remote GridWhale MCP calls:
 - `gw tools describe <name> --output json`
 - `gw resources list --output json`
 - `gw resources read <uri> --output text`
+- `gw program create --name <name> --output json`
+- `gw program write <programID> --file <path> --output json`
+- `gw program compile <programID> --output json`
+- `gw program run <programID> --json-file <path> --output json`
 - `gw tools call <name> --json <object> --output json`
 - `gw call <name> --json-file <path> --output json`
 - `gw process start <program> --json-file <path> --output json`
@@ -98,6 +102,17 @@ gw resources list --output json
 gw resources read <uri> --output text
 ```
 
+## Programs
+
+Use program wrappers for common create/write/compile/run workflows:
+
+```sh
+gw program create --name Hello --output json
+gw program write <programID> --file hello.grid --output json
+gw program compile <programID> --output json
+gw program run <programID> --json-file args.json --output json
+```
+
 ## Remote Processes
 
 `gw process` uses the GridWhale process endpoints:
@@ -111,6 +126,9 @@ Start a process:
 ```sh
 gw process start NUEG3K9Y.HelloWorld --json-file args.json --output json
 ```
+
+The program argument must be `PROGRAMID.entryPoint`, for example
+`NUEG3K9Y.HelloWorld`. Bare IDs and `/file/ID` paths are rejected locally.
 
 Poll for a process view. The sequence value is JSON; use `0` for the first
 view and pass later `$Seq` values back exactly as returned:

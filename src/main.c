@@ -186,7 +186,7 @@ static int dispatch(int argc, char **argv)
 						free(cmdv);
 						return 2;
 					}
-					json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					json_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!json_file_data) {
 						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
@@ -243,6 +243,167 @@ static int dispatch(int argc, char **argv)
 		return 2;
 	}
 
+	if (strcmp(cmdv[0], "program") == 0) {
+		int code;
+		if (cmdc < 2) {
+			fprintf(stderr, "gw: expected program subcommand\n");
+			free(cmdv);
+			return 2;
+		}
+
+		if (strcmp(cmdv[1], "create") == 0) {
+			const char *name = NULL;
+			int j;
+			for (j = 2; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--name") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --name requires a value\n");
+						free(cmdv);
+						return 2;
+					}
+					name = cmdv[++j];
+				} else {
+					fprintf(stderr, "gw: unknown program create option: %s\n", cmdv[j]);
+					free(cmdv);
+					return 2;
+				}
+			}
+			if (!name) {
+				fprintf(stderr, "gw: program create requires --name\n");
+				free(cmdv);
+				return 2;
+			}
+			code = command_program_create(&opts, name);
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "write") == 0) {
+			const char *program_id;
+			const char *source = NULL;
+			char *source_file_data = NULL;
+			char error[256];
+			int j;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: program write requires a program ID\n");
+				free(cmdv);
+				return 2;
+			}
+			program_id = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --file requires a path\n");
+						free(source_file_data);
+						free(cmdv);
+						return 2;
+					}
+					source_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!source_file_data) {
+						fprintf(stderr, "gw: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					source = source_file_data;
+				} else if (strcmp(cmdv[j], "--text") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --text requires a value\n");
+						free(source_file_data);
+						free(cmdv);
+						return 2;
+					}
+					source = cmdv[++j];
+				} else {
+					fprintf(stderr, "gw: unknown program write option: %s\n", cmdv[j]);
+					free(source_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+			if (!source) {
+				fprintf(stderr, "gw: program write requires --file or --text\n");
+				free(cmdv);
+				return 2;
+			}
+			code = command_program_write(&opts, program_id, source);
+			free(source_file_data);
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "read") == 0 ||
+			strcmp(cmdv[1], "compile") == 0) {
+			const char *program_id;
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: program %s requires a program ID\n", cmdv[1]);
+				free(cmdv);
+				return 2;
+			}
+			program_id = cmdv[2];
+			if (strcmp(cmdv[1], "read") == 0) {
+				code = command_program_read(&opts, program_id);
+			} else {
+				code = command_program_compile(&opts, program_id);
+			}
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "run") == 0) {
+			const char *program_id;
+			const char *json = "{}";
+			char *json_file_data = NULL;
+			char error[256];
+			int j;
+
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: program run requires a program ID\n");
+				free(cmdv);
+				return 2;
+			}
+			program_id = cmdv[2];
+			for (j = 3; j < cmdc; j++) {
+				if (strcmp(cmdv[j], "--json") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --json requires a value\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json = cmdv[++j];
+				} else if (strcmp(cmdv[j], "--json-file") == 0) {
+					if (j + 1 >= cmdc) {
+						fprintf(stderr, "gw: --json-file requires a path\n");
+						free(json_file_data);
+						free(cmdv);
+						return 2;
+					}
+					json_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
+					if (!json_file_data) {
+						fprintf(stderr, "gw: %s\n", error);
+						free(cmdv);
+						return 2;
+					}
+					json = json_file_data;
+				} else {
+					fprintf(stderr, "gw: unknown program run option: %s\n", cmdv[j]);
+					free(json_file_data);
+					free(cmdv);
+					return 2;
+				}
+			}
+			code = command_program_run(&opts, program_id, json);
+			free(json_file_data);
+			free(cmdv);
+			return code;
+		}
+
+		fprintf(stderr, "gw: unknown program subcommand: %s\n", cmdv[1]);
+		free(cmdv);
+		return 2;
+	}
+
 	if (strcmp(cmdv[0], "call") == 0) {
 		const char *tool_name;
 		const char *json = NULL;
@@ -273,7 +434,7 @@ static int dispatch(int argc, char **argv)
 					free(cmdv);
 					return 2;
 				}
-				json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+				json_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 				if (!json_file_data) {
 					fprintf(stderr, "gw: %s\n", error);
 					free(cmdv);
@@ -328,7 +489,7 @@ static int dispatch(int argc, char **argv)
 					free(cmdv);
 					return 2;
 				}
-				json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+				json_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 				if (!json_file_data) {
 					fprintf(stderr, "gw: %s\n", error);
 					free(cmdv);
@@ -385,7 +546,7 @@ static int dispatch(int argc, char **argv)
 						free(cmdv);
 						return 2;
 					}
-					json_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					json_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!json_file_data) {
 						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
@@ -439,7 +600,7 @@ static int dispatch(int argc, char **argv)
 						free(cmdv);
 						return 2;
 					}
-					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					seq_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!seq_file_data) {
 						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
@@ -497,7 +658,7 @@ static int dispatch(int argc, char **argv)
 						free(cmdv);
 						return 2;
 					}
-					seq_file_data = read_file_alloc(cmdv[++j], error, sizeof(error));
+					seq_file_data = read_json_file_alloc(cmdv[++j], error, sizeof(error));
 					if (!seq_file_data) {
 						fprintf(stderr, "gw: %s\n", error);
 						free(cmdv);
