@@ -18,6 +18,7 @@ typedef struct GwOptions {
 	long timeout_ms;
 	int include_raw;
 	int auth_prompt;
+	int insecure_tls;
 } GwOptions;
 
 typedef struct GwHttpResponse {

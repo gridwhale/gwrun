@@ -723,7 +723,14 @@ static int validate_process_program_ref(const char *program)
 {
 	const char *dot;
 
-	if (!program || !program[0] || program[0] == '/' || program[0] == '.') {
+	if (!program || !program[0] || program[0] == '.') {
+		return 0;
+	}
+	if (strncmp(program, "/file/", 6) == 0) {
+		const char *id = program + 6;
+		return id[0] && strchr(id, '.') == NULL && strchr(id, '/') == NULL;
+	}
+	if (program[0] == '/') {
 		return 0;
 	}
 	dot = strchr(program, '.');
@@ -746,10 +753,10 @@ static int reject_invalid_process_program_ref(const GwOptions *opts, const char 
 
 	program_json = json_escape_alloc(program ? program : "");
 	if (wants_json(opts)) {
-		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"invalid_arguments\",\"error\":{\"message\":\"process start expects PROGRAMID.entryPoint, for example NUEG3K9Y.HelloWorld\",\"program\":%s}}\n",
+		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"invalid_arguments\",\"error\":{\"message\":\"process start expects PROGRAMID.entryPoint or /file/PROGRAMID, for example NUEG3K9Y.HelloWorld or /file/7QGK2YY9\",\"program\":%s}}\n",
 			command, program_json ? program_json : "\"\"");
 	} else {
-		fprintf(stderr, "gw: process start expects PROGRAMID.entryPoint, for example NUEG3K9Y.HelloWorld; got %s\n",
+		fprintf(stderr, "gw: process start expects PROGRAMID.entryPoint or /file/PROGRAMID, for example NUEG3K9Y.HelloWorld or /file/7QGK2YY9; got %s\n",
 			program ? program : "");
 	}
 	free(program_json);
@@ -1020,7 +1027,7 @@ void print_usage(void)
 {
 	printf("GridWhale CLI %s\n\n", GWRUN_VERSION);
 	printf("Usage:\n");
-	printf("  gw [--server URL] [--output text|json] version\n");
+	printf("  gw [--server URL] [--output text|json] [--insecure] version\n");
 	printf("  gw help [agents]\n");
 	printf("  gw [--server URL] [--output text|json] check\n");
 	printf("  gw [--server URL] [--output text|json] manifest\n");
@@ -1040,6 +1047,7 @@ void print_usage(void)
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq-file <path>\n");
 	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
 	printf("  gw [--server URL] run <program> --json-file <path>\n\n");
+	printf("Use --insecure only for local development servers with self-signed TLS certificates.\n");
 	printf("Agents: run `gw help agents` for guidance and `gw manifest --output json` for machine-readable discovery.\n");
 }
 

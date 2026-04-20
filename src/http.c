@@ -90,6 +90,10 @@ int http_post_json_url(const GwOptions *opts, const char *url, const char *body,
 	if (ca_bundle) {
 		curl_easy_setopt(curl, CURLOPT_CAINFO, ca_bundle);
 	}
+	if (opts->insecure_tls) {
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	}
 
 	rc = curl_easy_perform(curl);
 	if (rc != CURLE_OK) {

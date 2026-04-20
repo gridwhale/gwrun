@@ -8,12 +8,13 @@ with remote GridWhale processes.
 ## Global Options
 
 ```text
-gw [--server URL] [--output text|json] [--timeout ms] <command>
+gw [--server URL] [--output text|json] [--timeout ms] [--insecure] <command>
 ```
 
 - `--server URL`: GridWhale MCP endpoint. Defaults to `https://dev.gridwhale.io/mcp/`.
 - `--output text|json`: Human text or machine-readable JSON. Defaults to text.
 - `--timeout ms`: Request timeout in milliseconds. Defaults to 30000.
+- `--insecure`: Disable TLS certificate verification. Use only for local development servers.
 
 ## Auth
 

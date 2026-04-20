@@ -43,6 +43,10 @@ static int parse_global_option(GwOptions *opts, int argc, char **argv, int *i)
 		}
 		return 1;
 	}
+	if (is_option(argv[*i], "--insecure")) {
+		opts->insecure_tls = 1;
+		return 1;
+	}
 	return 0;
 }
 
@@ -58,6 +62,7 @@ static int dispatch(int argc, char **argv)
 	opts.timeout_ms = 30000;
 	opts.include_raw = 0;
 	opts.auth_prompt = 1;
+	opts.insecure_tls = 0;
 
 	cmdv = (char **)calloc((size_t)argc, sizeof(char *));
 	if (!cmdv) {
@@ -73,7 +78,8 @@ static int dispatch(int argc, char **argv)
 		}
 		if (is_option(argv[i], "--server") ||
 			is_option(argv[i], "--output") ||
-			is_option(argv[i], "--timeout")) {
+			is_option(argv[i], "--timeout") ||
+			is_option(argv[i], "--insecure")) {
 			if (!parse_global_option(&opts, argc, argv, &i)) {
 				free(cmdv);
 				return 2;
