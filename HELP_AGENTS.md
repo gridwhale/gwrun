@@ -73,7 +73,7 @@ This avoids common PowerShell object-serialization mistakes.
 Start a process:
 
 ```text
-gw process start <program> --json-file args.json --output json
+gw process start <programID> --json-file args.json --output json
 ```
 
 The `<program>` value must be `PROGRAMID.entryPoint`, for example

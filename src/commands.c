@@ -1042,7 +1042,9 @@ void print_usage(void)
 	printf("  gw [--server URL] [--output text|json] program read <programID>\n");
 	printf("  gw [--server URL] [--output text|json] program compile <programID>\n");
 	printf("  gw [--server URL] [--output text|json] program run <programID> --json-file <path>\n");
-	printf("  gw [--server URL] [--output text|json] process start <program> --json <object>\n");
+	printf("  gw [--server URL] [--output text|json] process list\n");
+	printf("  gw [--server URL] [--output text|json] process kill <processID>\n");
+	printf("  gw [--server URL] [--output text|json] process start <programID> --json <object>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq <json>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq-file <path>\n");
 	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
@@ -1528,6 +1530,37 @@ int command_program_run(const GwOptions *opts, const char *program_id, const cha
 		return 4;
 	}
 	code = command_call_tool_suffix(opts, "program.run", "program_run", args.data);
+	buffer_free(&args);
+	return code;
+}
+
+int command_process_list(const GwOptions *opts)
+{
+	return command_call_tool_suffix(opts, "process.list", "process_list", "{}");
+}
+
+int command_process_kill(const GwOptions *opts, const char *process_id)
+{
+	GwBuffer args;
+	char *id_json = json_escape_alloc(process_id);
+	int ok;
+	int code;
+
+	if (!id_json) {
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+	buffer_init(&args);
+	ok = buffer_append_cstr(&args, "{\"processID\":") &&
+		buffer_append_cstr(&args, id_json) &&
+		buffer_append_cstr(&args, "}");
+	free(id_json);
+	if (!ok) {
+		buffer_free(&args);
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+	code = command_call_tool_suffix(opts, "process.kill", "process_kill", args.data);
 	buffer_free(&args);
 	return code;
 }

@@ -61,6 +61,8 @@ int command_program_write(const GwOptions *opts, const char *program_id, const c
 int command_program_read(const GwOptions *opts, const char *program_id);
 int command_program_compile(const GwOptions *opts, const char *program_id);
 int command_program_run(const GwOptions *opts, const char *program_id, const char *args_json);
+int command_process_list(const GwOptions *opts);
+int command_process_kill(const GwOptions *opts, const char *process_id);
 int command_process_start(const GwOptions *opts, const char *program, const char *args_json);
 int command_process_view(const GwOptions *opts, const char *process_id, const char *seq_json);
 int command_process_input(const GwOptions *opts, const char *process_id, const char *input_text, const char *seq_json);

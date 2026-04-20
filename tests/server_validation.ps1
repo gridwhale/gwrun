@@ -308,6 +308,14 @@ try {
     if (-not $programRunTool) {
         throw "Server does not advertise program_run."
     }
+    $processListTool = ($toolList | Where-Object { $_.name -eq "process_list" -or $_.name.EndsWith(".process_list") } | Select-Object -First 1).name
+    if (-not $processListTool) {
+        throw "Server does not advertise process_list."
+    }
+    $processKillTool = ($toolList | Where-Object { $_.name -eq "process_kill" -or $_.name.EndsWith(".process_kill") } | Select-Object -First 1).name
+    if (-not $processKillTool) {
+        throw "Server does not advertise process_kill."
+    }
     $helloWorldTool = ($toolList | Where-Object { $_.name -eq "HelloWorld" -or $_.name.EndsWith(".HelloWorld") } | Select-Object -First 1).name
     if (-not $helloWorldTool) {
         throw "Server does not advertise HelloWorld."
@@ -318,6 +326,8 @@ try {
     Write-Host "program_read tool: $programReadTool"
     Write-Host "program_compile tool: $programCompileTool"
     Write-Host "program_run tool: $programRunTool"
+    Write-Host "process_list tool: $processListTool"
+    Write-Host "process_kill tool: $processKillTool"
     Write-Host "HelloWorld tool: $helloWorldTool"
 
     Write-Host ""
@@ -987,12 +997,88 @@ try {
             ($fileProcessView.Json.result.PSObject.Properties.Name -contains "CON")) {
             $fileConText = ($fileProcessView.Json.result.CON -join "`n")
         }
-        Assert-True `
-            ($fileProcessView.ExitCode -eq 0 -and $fileProcessView.Json.result.'$Status' -eq "terminated" -and $fileConText.Contains("validation sentinel")) `
-            "process view returns output for /file/PROGRAMID process" `
-            'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
-            (Format-JsonCompact $fileProcessView.Json)
+    Assert-True `
+        ($fileProcessView.ExitCode -eq 0 -and $fileProcessView.Json.result.'$Status' -eq "terminated" -and $fileConText.Contains("validation sentinel")) `
+        "process view returns output for /file/PROGRAMID process" `
+        'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
+        (Format-JsonCompact $fileProcessView.Json)
     }
+
+    Write-Host ""
+    Write-Host "CASE: process_list succeeds"
+    $processList = Invoke-Gw @("process", "list")
+    $processListStructured = Get-McpStructuredContent $processList.Json
+    $processListRows = $null
+    if ($processList.ExitCode -eq 0 -and
+        $null -ne $processListStructured -and
+        ($processListStructured.PSObject.Properties.Name -contains "processList") -and
+        $processListStructured.processList.Count -gt 1) {
+        $processListRows = $processListStructured.processList[1].rows
+    }
+    Assert-True `
+        ($processList.ExitCode -eq 0 -and $null -ne $processListRows) `
+        "process_list returns a process table" `
+        "structuredContent.processList contains table metadata with a rows count." `
+        (Format-JsonCompact $processList.Json)
+
+    $missingKillProcessIDArgsPath = Join-Path $tempDir "process-kill-missing-process-id.json"
+    Write-Utf8NoBom $missingKillProcessIDArgsPath (@{} | ConvertTo-Json -Depth 5 -Compress)
+
+    Write-Host ""
+    Write-Host "CASE: process_kill rejects missing processID"
+    $missingKillProcessID = Invoke-Gw @("tools", "call", $processKillTool, "--json-file", $missingKillProcessIDArgsPath)
+    Assert-True `
+        (Test-IsValidationError $missingKillProcessID) `
+        "server reports a validation error when process_kill processID is missing" `
+        "MCP tool result with isError:true or structuredContent.success:false, with error.code='invalid_argument' or 'missing_argument', path='processID', expected='string'." `
+        (Format-JsonCompact $missingKillProcessID.Json)
+    Assert-True `
+        ($missingKillProcessID.Json.ok -ne $false -or $missingKillProcessID.Json.httpStatus -ne 500) `
+        "missing processID validation error is not returned as HTTP 500" `
+        "HTTP 200 / JSON-RPC success carrying a tool-level validation error, or JSON-RPC -32602 Invalid params. Never HTTP 500." `
+        (Format-JsonCompact $missingKillProcessID.Json)
+
+    $numberKillProcessIDArgsPath = Join-Path $tempDir "process-kill-number-process-id.json"
+    Write-Utf8NoBom $numberKillProcessIDArgsPath (@{
+        processID = 123
+    } | ConvertTo-Json -Depth 5 -Compress)
+
+    Write-Host ""
+    Write-Host "CASE: process_kill rejects numeric processID"
+    $numberKillProcessID = Invoke-Gw @("tools", "call", $processKillTool, "--json-file", $numberKillProcessIDArgsPath)
+    Assert-True `
+        (Test-IsValidationError $numberKillProcessID) `
+        "server reports a validation error for numeric process_kill processID" `
+        "MCP tool result with isError:true or structuredContent.success:false, with error.code='invalid_argument', path='processID', expected='string', actual='number'." `
+        (Format-JsonCompact $numberKillProcessID.Json)
+    Assert-True `
+        ($numberKillProcessID.Json.ok -ne $false -or $numberKillProcessID.Json.httpStatus -ne 500) `
+        "numeric processID validation error is not returned as HTTP 500" `
+        "HTTP 200 / JSON-RPC success carrying a tool-level validation error, or JSON-RPC -32602 Invalid params. Never HTTP 500." `
+        (Format-JsonCompact $numberKillProcessID.Json)
+
+    Write-Host ""
+    Write-Host "CASE: process_kill terminates a waiting process"
+    $killStart = Invoke-Gw @("process", "start", $helloWorldTool, "--json-file", $interactiveArgsPath)
+    $killProcessID = $killStart.Json.result
+    $killView = Invoke-Gw @("process", "view", $killProcessID, "--seq", "0")
+    Assert-True `
+        ($killStart.ExitCode -eq 0 -and $killView.ExitCode -eq 0 -and $killView.Json.result.'$Status' -eq "waiting.consoleInput") `
+        "test process is waiting for input before kill" `
+        'process start succeeds and initial view has result.$Status=''waiting.consoleInput''.' `
+        (Format-JsonCompact $killView.Json)
+    $kill = Invoke-Gw @("process", "kill", $killProcessID)
+    Assert-True `
+        ($kill.ExitCode -eq 0 -and $null -ne (Get-McpStructuredContent $kill.Json) -and (Get-McpStructuredContent $kill.Json).success -eq $true) `
+        "process_kill reports success" `
+        "structuredContent.success=true." `
+        (Format-JsonCompact $kill.Json)
+    $afterKillView = Invoke-Gw @("process", "view", $killProcessID, "--seq", "0")
+    Assert-True `
+        ($afterKillView.ExitCode -eq 0 -and $afterKillView.Json.result.'$Status' -eq "terminated") `
+        "killed process views as terminated" `
+        'result.$Status=''terminated''.' `
+        (Format-JsonCompact $afterKillView.Json)
 
     if ($KeepProgram) {
         Write-Host "Kept validation program: $programID"

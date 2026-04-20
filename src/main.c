@@ -523,6 +523,23 @@ static int dispatch(int argc, char **argv)
 			return 2;
 		}
 
+		if (strcmp(cmdv[1], "list") == 0) {
+			code = command_process_list(&opts);
+			free(cmdv);
+			return code;
+		}
+
+		if (strcmp(cmdv[1], "kill") == 0) {
+			if (cmdc < 3) {
+				fprintf(stderr, "gw: process kill requires a process ID\n");
+				free(cmdv);
+				return 2;
+			}
+			code = command_process_kill(&opts, cmdv[2]);
+			free(cmdv);
+			return code;
+		}
+
 		if (strcmp(cmdv[1], "start") == 0 || strcmp(cmdv[1], "attach") == 0) {
 			const char *program;
 			const char *json = "{}";

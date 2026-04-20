@@ -70,16 +70,19 @@ gw program compile <programID> --output json
 gw program run <programID> --json-file args.json --output json
 ```
 
-Use `gw process start <programID.entryPoint>` for interactive entry points.
-`process start` expects `PROGRAMID.entryPoint`, for example
-`NUEG3K9Y.HelloWorld`; bare program IDs and `/file/ID` paths are not accepted.
+Use `gw process start <programID.entryPoint>` for interactive entry points, or
+`gw process start <programID>` after creating a program with `gw program create`.
+`process start` accepts `PROGRAMID.entryPoint` or `/file/PROGRAMID`, for example
+`NUEG3K9Y.HelloWorld` or `/file/7QGK2YY9`.
 
 ## Remote Processes
 
 Agents should use the decomposed process commands:
 
 ```text
-gw process start <program> --json-file args.json --output json
+gw process start <programID> --json-file args.json --output json
+gw process list --output json
+gw process kill <processID> --output json
 gw process view <processID> --seq 0 --output json
 gw process input <processID> --text <text> --seq-file input.seq.json --output json
 gw process view <processID> --seq-file next.seq.json --output json
