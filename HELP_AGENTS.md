@@ -68,6 +68,13 @@ gw program read <programID> --output text
 `gw program write --file` reads the source file and sends `source` as a string.
 This avoids common PowerShell object-serialization mistakes.
 
+`gw program create` returns a program ID in `/file/PROGRAMID` form. The
+`gw program` wrappers accept either `/file/PROGRAMID` or bare `PROGRAMID` and
+normalize bare IDs for you.
+
+Use `gw program run` for one-shot console programs that execute top-level code
+once and return output.
+
 ## Process Workflow
 
 Start a process:
@@ -76,9 +83,14 @@ Start a process:
 gw process start <programID> --json-file args.json --output json
 ```
 
-The `<program>` value must be `PROGRAMID.entryPoint`, for example
-`NUEG3K9Y.HelloWorld`. Do not pass `/file/PROGRAMID`, a bare program ID, or a
-leading-dot entry point.
+For interactive entrypoints, pass `PROGRAMID.entryPoint`, for example
+`NUEG3K9Y.HelloWorld`.
+
+For top-level console programs, `gw process start` accepts `/file/PROGRAMID`
+or bare `PROGRAMID` and normalizes bare IDs for you.
+
+If your program needs repeated `input()` calls, put the loop in an `entrypoint`
+function and start `PROGRAMID.entryPoint`.
 
 View from the beginning:
 
@@ -107,6 +119,16 @@ gw process view <processID> --seq-file next.seq.json --output json
 
 This avoids duplicate local input echo while preserving the full process
 history for later viewers.
+
+## Windows Shell Notes
+
+On Windows, prefer PowerShell when passing GridWhale program IDs or file paths.
+
+- Git Bash/MSYS may rewrite `/file/PROGRAMID` into a Windows path before `gw`
+  sees it.
+- If you must use Git Bash, `MSYS_NO_PATHCONV=1` may be required.
+- Prefer forward slashes in file paths passed to `gw`.
+- If a Windows path looks mangled, check for backslashes eaten by bash.
 
 ## JSON Output
 

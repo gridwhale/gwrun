@@ -337,12 +337,22 @@ try {
         throw "Unable to create validation program: $($create.Text)"
     }
     $programID = Get-RequiredStructuredField $create "programID"
+    $bareProgramID = $programID.Substring("/file/".Length)
     Assert-True `
         ($programID -is [string] -and $programID.StartsWith("/file/")) `
         "server creates a program for a valid name" `
         "structuredContent.programID is a /file/... string." `
         (Format-JsonCompact $create.Json)
+    Assert-True `
+        (($create.Json.PSObject.Properties.Name -contains "derived") -and
+         $null -ne $create.Json.derived -and
+         ($create.Json.derived.PSObject.Properties.Name -contains "programIDBare") -and
+         $create.Json.derived.programIDBare -eq $bareProgramID) `
+        "gw derives bare programID for program.create" `
+        "top-level derived.programIDBare matches programID without the /file/ prefix." `
+        (Format-JsonCompact $create.Json)
     Write-Host "programID: $programID"
+    Write-Host "bare programID: $bareProgramID"
 
     $missingCreateNameArgsPath = Join-Path $tempDir "program-create-missing-name.json"
     Write-Utf8NoBom $missingCreateNameArgsPath (@{} | ConvertTo-Json -Depth 5 -Compress)
@@ -572,6 +582,16 @@ try {
         "structuredContent.sourceCode equals the sentinel source string." `
         (Format-JsonCompact $validRead.Json)
 
+    Write-Host ""
+    Write-Host "CASE: gw program read accepts bare programID"
+    $bareRead = Invoke-Gw @("program", "read", $bareProgramID)
+    $bareReadStructured = Get-McpStructuredContent $bareRead.Json
+    Assert-True `
+        ($bareRead.ExitCode -eq 0 -and $null -ne $bareReadStructured -and $bareReadStructured.sourceCode -eq $goodSource) `
+        "gw normalizes bare programID for program read" `
+        "structuredContent.sourceCode equals the sentinel source string." `
+        (Format-JsonCompact $bareRead.Json)
+
     $missingReadProgramIDArgsPath = Join-Path $tempDir "program-read-missing-program-id.json"
     Write-Utf8NoBom $missingReadProgramIDArgsPath (@{} | ConvertTo-Json -Depth 5 -Compress)
 
@@ -659,6 +679,16 @@ try {
         "server compiles a valid programID" `
         "structuredContent.success=true." `
         (Format-JsonCompact $validCompile.Json)
+
+    Write-Host ""
+    Write-Host "CASE: gw program compile accepts bare programID"
+    $bareCompile = Invoke-Gw @("program", "compile", $bareProgramID)
+    $bareCompileStructured = Get-McpStructuredContent $bareCompile.Json
+    Assert-True `
+        ($bareCompile.ExitCode -eq 0 -and $null -ne $bareCompileStructured -and $bareCompileStructured.success -eq $true) `
+        "gw normalizes bare programID for program compile" `
+        "structuredContent.success=true." `
+        (Format-JsonCompact $bareCompile.Json)
 
     $missingCompileProgramIDArgsPath = Join-Path $tempDir "program-compile-missing-program-id.json"
     Write-Utf8NoBom $missingCompileProgramIDArgsPath (@{} | ConvertTo-Json -Depth 5 -Compress)
@@ -777,6 +807,18 @@ try {
         "server runs a valid program_run request" `
         "structuredContent.status='normal' and structuredContent.output='validation sentinel'." `
         (Format-JsonCompact $validRun.Json)
+
+    Write-Host ""
+    Write-Host "CASE: gw program run accepts bare programID"
+    $runArgsPath = Join-Path $tempDir "gw-program-run-bare.json"
+    Write-Utf8NoBom $runArgsPath (@{} | ConvertTo-Json -Depth 5 -Compress)
+    $bareRun = Invoke-Gw @("program", "run", $bareProgramID, "--json-file", $runArgsPath)
+    $bareRunStructured = Get-McpStructuredContent $bareRun.Json
+    Assert-True `
+        ($bareRun.ExitCode -eq 0 -and $null -ne $bareRunStructured -and $bareRunStructured.status -eq "normal" -and $bareRunStructured.output -eq "validation sentinel") `
+        "gw normalizes bare programID for program run" `
+        "structuredContent.status='normal' and structuredContent.output='validation sentinel'." `
+        (Format-JsonCompact $bareRun.Json)
 
     $missingRunProgramIDArgsPath = Join-Path $tempDir "program-run-missing-program-id.json"
     Write-Utf8NoBom $missingRunProgramIDArgsPath (@{
@@ -1002,6 +1044,31 @@ try {
         "process view returns output for /file/PROGRAMID process" `
         'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
         (Format-JsonCompact $fileProcessView.Json)
+    }
+
+    Write-Host ""
+    Write-Host "CASE: processStart accepts bare PROGRAMID"
+    $bareProcessStart = Invoke-Gw @("process", "start", $bareProgramID, "--json-file", $interactiveArgsPath)
+    Assert-True `
+        ($bareProcessStart.ExitCode -eq 0 -and $bareProcessStart.Json.result -is [string] -and $bareProcessStart.Json.result.Length -gt 0) `
+        "gw normalizes bare PROGRAMID for process start" `
+        "gw process start PROGRAMID returns ok:true and result as a non-empty processID string." `
+        (Format-JsonCompact $bareProcessStart.Json)
+
+    if ($bareProcessStart.ExitCode -eq 0 -and $bareProcessStart.Json.result -is [string]) {
+        $bareProcessID = $bareProcessStart.Json.result
+        $bareProcessView = Invoke-Gw @("process", "view", $bareProcessID, "--seq", "0")
+        $bareConText = ""
+        if ($bareProcessView.ExitCode -eq 0 -and
+            $null -ne $bareProcessView.Json.result -and
+            ($bareProcessView.Json.result.PSObject.Properties.Name -contains "CON")) {
+            $bareConText = ($bareProcessView.Json.result.CON -join "`n")
+        }
+        Assert-True `
+            ($bareProcessView.ExitCode -eq 0 -and $bareProcessView.Json.result.'$Status' -eq "terminated" -and $bareConText.Contains("validation sentinel")) `
+            "process view returns output for bare PROGRAMID process" `
+            'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
+            (Format-JsonCompact $bareProcessView.Json)
     }
 
     Write-Host ""

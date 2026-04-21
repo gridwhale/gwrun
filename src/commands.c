@@ -12,6 +12,23 @@ static int wants_json(const GwOptions *opts)
 	return strcmp(opts->output, "json") == 0;
 }
 
+static char *copy_cstr_alloc(const char *s)
+{
+	size_t len;
+	char *out;
+
+	if (!s) {
+		return NULL;
+	}
+	len = strlen(s);
+	out = (char *)malloc(len + 1);
+	if (!out) {
+		return NULL;
+	}
+	memcpy(out, s, len + 1);
+	return out;
+}
+
 static const char *find_range(const char *start, const char *end, const char *needle)
 {
 	size_t needle_len = strlen(needle);
@@ -209,6 +226,102 @@ static char *json_object_path_dup(const char *json, const char *object_name, con
 		free(object_json);
 	}
 	return value;
+}
+
+static int is_simple_program_id(const char *program_id)
+{
+	const unsigned char *p = (const unsigned char *)program_id;
+
+	if (!program_id || !program_id[0]) {
+		return 0;
+	}
+	if (strncmp(program_id, "/file/", 6) == 0) {
+		return 0;
+	}
+	while (*p) {
+		if (!((*p >= 'A' && *p <= 'Z') ||
+			(*p >= 'a' && *p <= 'z') ||
+			(*p >= '0' && *p <= '9') ||
+			*p == '_' || *p == '-')) {
+			return 0;
+		}
+		p++;
+	}
+	return 1;
+}
+
+static const char *msys_rewritten_program_id_suffix(const char *program_id)
+{
+	if (!program_id) {
+		return NULL;
+	}
+	if (strncmp(program_id, "C:/Program Files/Git/file/", 26) == 0) {
+		return program_id + 26;
+	}
+	if (strncmp(program_id, "C:\\Program Files\\Git\\file\\", 26) == 0) {
+		return program_id + 26;
+	}
+	return NULL;
+}
+
+static char *normalize_program_id_alloc(const char *program_id)
+{
+	GwBuffer out;
+	const char *rewritten_suffix;
+
+	if (!program_id) {
+		return NULL;
+	}
+	rewritten_suffix = msys_rewritten_program_id_suffix(program_id);
+	if (rewritten_suffix) {
+		buffer_init(&out);
+		if (!buffer_append_cstr(&out, "/file/") ||
+			!buffer_append_cstr(&out, rewritten_suffix)) {
+			buffer_free(&out);
+			return NULL;
+		}
+		return out.data;
+	}
+	if (!is_simple_program_id(program_id)) {
+		return copy_cstr_alloc(program_id);
+	}
+	buffer_init(&out);
+	if (!buffer_append_cstr(&out, "/file/") ||
+		!buffer_append_cstr(&out, program_id)) {
+		buffer_free(&out);
+		return NULL;
+	}
+	return out.data;
+}
+
+static char *normalize_process_program_alloc(const char *program)
+{
+	GwBuffer out;
+	const char *rewritten_suffix;
+
+	if (!program) {
+		return NULL;
+	}
+	rewritten_suffix = msys_rewritten_program_id_suffix(program);
+	if (rewritten_suffix) {
+		buffer_init(&out);
+		if (!buffer_append_cstr(&out, "/file/") ||
+			!buffer_append_cstr(&out, rewritten_suffix)) {
+			buffer_free(&out);
+			return NULL;
+		}
+		return out.data;
+	}
+	if (!is_simple_program_id(program)) {
+		return copy_cstr_alloc(program);
+	}
+	buffer_init(&out);
+	if (!buffer_append_cstr(&out, "/file/") ||
+		!buffer_append_cstr(&out, program)) {
+		buffer_free(&out);
+		return NULL;
+	}
+	return out.data;
 }
 
 static char *json_string_dup(const char *quote, const char **end_out);
@@ -753,10 +866,10 @@ static int reject_invalid_process_program_ref(const GwOptions *opts, const char 
 
 	program_json = json_escape_alloc(program ? program : "");
 	if (wants_json(opts)) {
-		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"invalid_arguments\",\"error\":{\"message\":\"process start expects PROGRAMID.entryPoint or /file/PROGRAMID, for example NUEG3K9Y.HelloWorld or /file/7QGK2YY9\",\"program\":%s}}\n",
+		printf("{\"ok\":false,\"command\":\"%s\",\"status\":\"invalid_arguments\",\"error\":{\"message\":\"process start expects PROGRAMID.entryPoint, /file/PROGRAMID, or a bare PROGRAMID, for example NUEG3K9Y.HelloWorld, /file/7QGK2YY9, or 7QGK2YY9\",\"program\":%s}}\n",
 			command, program_json ? program_json : "\"\"");
 	} else {
-		fprintf(stderr, "gw: process start expects PROGRAMID.entryPoint or /file/PROGRAMID, for example NUEG3K9Y.HelloWorld or /file/7QGK2YY9; got %s\n",
+		fprintf(stderr, "gw: process start expects PROGRAMID.entryPoint, /file/PROGRAMID, or a bare PROGRAMID, for example NUEG3K9Y.HelloWorld, /file/7QGK2YY9, or 7QGK2YY9; got %s\n",
 			program ? program : "");
 	}
 	free(program_json);
@@ -1044,11 +1157,11 @@ void print_usage(void)
 	printf("  gw [--server URL] [--output text|json] program run <programID> --json-file <path>\n");
 	printf("  gw [--server URL] [--output text|json] process list\n");
 	printf("  gw [--server URL] [--output text|json] process kill <processID>\n");
-	printf("  gw [--server URL] [--output text|json] process start <programID> --json <object>\n");
+	printf("  gw [--server URL] [--output text|json] process start <programID-or-entryPoint> --json <object>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq <json>\n");
 	printf("  gw [--server URL] [--output text|json] process view <processID> --seq-file <path>\n");
 	printf("  gw [--server URL] [--output text|json] process input <processID> --text <text> --seq-file <path>\n");
-	printf("  gw [--server URL] run <program> --json-file <path>\n\n");
+	printf("  gw [--server URL] run <programID-or-entryPoint> --json-file <path>\n\n");
 	printf("Use --insecure only for local development servers with self-signed TLS certificates.\n");
 	printf("Agents: run `gw help agents` for guidance and `gw manifest --output json` for machine-readable discovery.\n");
 }
@@ -1377,7 +1490,9 @@ static int command_call_tool_suffix(const GwOptions *opts, const char *command, 
 int command_program_create(const GwOptions *opts, const char *name)
 {
 	GwBuffer args;
+	GwHttpResponse res;
 	char *name_json = json_escape_alloc(name);
+	long duration = 0;
 	int ok;
 	int code;
 
@@ -1395,20 +1510,52 @@ int command_program_create(const GwOptions *opts, const char *name)
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
-	code = command_call_tool_suffix(opts, "program.create", "program_create", args.data);
+	code = call_tool_suffix_response(opts, "program.create", "program_create", args.data, &res, &duration);
 	buffer_free(&args);
+	if (code != 0) {
+		return code;
+	}
+
+	if (res.status >= 200 && res.status < 300 && wants_json(opts)) {
+		char *server = json_escape_alloc(opts->server);
+		char *program_id_json = json_object_path_dup(res.body.data ? res.body.data : "", "structuredContent", "programID");
+		char *program_id = NULL;
+		char *bare_id = NULL;
+		if (program_id_json && program_id_json[0] == '"') {
+			program_id = json_string_dup(program_id_json, NULL);
+		}
+		if (program_id && strncmp(program_id, "/file/", 6) == 0) {
+			bare_id = json_escape_alloc(program_id + 6);
+		}
+		printf("{\"ok\":true,\"command\":\"program.create\",\"server\":%s,\"durationMs\":%ld,\"result\":%s",
+			server ? server : "\"\"", duration, res.body.data ? res.body.data : "null");
+		if (bare_id) {
+			printf(",\"derived\":{\"programIDBare\":%s}", bare_id);
+		}
+		printf("}\n");
+		free(server);
+		free(program_id_json);
+		free(program_id);
+		free(bare_id);
+		code = 0;
+	} else {
+		code = print_remote_result(opts, "program.create", &res, duration);
+	}
+	http_response_free(&res);
 	return code;
 }
 
 int command_program_write(const GwOptions *opts, const char *program_id, const char *source)
 {
 	GwBuffer args;
-	char *id_json = json_escape_alloc(program_id);
+	char *normalized_id = normalize_program_id_alloc(program_id);
+	char *id_json = normalized_id ? json_escape_alloc(normalized_id) : NULL;
 	char *source_json = json_escape_alloc(source);
 	int ok;
 	int code;
 
 	if (!id_json || !source_json) {
+		free(normalized_id);
 		free(id_json);
 		free(source_json);
 		fprintf(stderr, "gw: out of memory\n");
@@ -1420,6 +1567,7 @@ int command_program_write(const GwOptions *opts, const char *program_id, const c
 		buffer_append_cstr(&args, ",\"source\":") &&
 		buffer_append_cstr(&args, source_json) &&
 		buffer_append_cstr(&args, "}");
+	free(normalized_id);
 	free(id_json);
 	free(source_json);
 	if (!ok) {
@@ -1436,12 +1584,14 @@ int command_program_read(const GwOptions *opts, const char *program_id)
 {
 	GwBuffer args;
 	GwHttpResponse res;
-	char *id_json = json_escape_alloc(program_id);
+	char *normalized_id = normalize_program_id_alloc(program_id);
+	char *id_json = normalized_id ? json_escape_alloc(normalized_id) : NULL;
 	long duration = 0;
 	int ok;
 	int code;
 
 	if (!id_json) {
+		free(normalized_id);
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
@@ -1449,6 +1599,7 @@ int command_program_read(const GwOptions *opts, const char *program_id)
 	ok = buffer_append_cstr(&args, "{\"programID\":") &&
 		buffer_append_cstr(&args, id_json) &&
 		buffer_append_cstr(&args, "}");
+	free(normalized_id);
 	free(id_json);
 	if (!ok) {
 		buffer_free(&args);
@@ -1483,11 +1634,13 @@ int command_program_read(const GwOptions *opts, const char *program_id)
 int command_program_compile(const GwOptions *opts, const char *program_id)
 {
 	GwBuffer args;
-	char *id_json = json_escape_alloc(program_id);
+	char *normalized_id = normalize_program_id_alloc(program_id);
+	char *id_json = normalized_id ? json_escape_alloc(normalized_id) : NULL;
 	int ok;
 	int code;
 
 	if (!id_json) {
+		free(normalized_id);
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
@@ -1495,6 +1648,7 @@ int command_program_compile(const GwOptions *opts, const char *program_id)
 	ok = buffer_append_cstr(&args, "{\"programID\":") &&
 		buffer_append_cstr(&args, id_json) &&
 		buffer_append_cstr(&args, "}");
+	free(normalized_id);
 	free(id_json);
 	if (!ok) {
 		buffer_free(&args);
@@ -1509,11 +1663,13 @@ int command_program_compile(const GwOptions *opts, const char *program_id)
 int command_program_run(const GwOptions *opts, const char *program_id, const char *args_json)
 {
 	GwBuffer args;
-	char *id_json = json_escape_alloc(program_id);
+	char *normalized_id = normalize_program_id_alloc(program_id);
+	char *id_json = normalized_id ? json_escape_alloc(normalized_id) : NULL;
 	int ok;
 	int code;
 
 	if (!id_json) {
+		free(normalized_id);
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
@@ -1523,6 +1679,7 @@ int command_program_run(const GwOptions *opts, const char *program_id, const cha
 		buffer_append_cstr(&args, ",\"args\":") &&
 		buffer_append_cstr(&args, args_json ? args_json : "{}") &&
 		buffer_append_cstr(&args, "}");
+	free(normalized_id);
 	free(id_json);
 	if (!ok) {
 		buffer_free(&args);
@@ -1609,20 +1766,29 @@ int command_process_start(const GwOptions *opts, const char *program, const char
 {
 	GwBuffer body;
 	GwHttpResponse res;
+	char *normalized_program = normalize_process_program_alloc(program);
 	long start;
 	long duration;
 	int ok;
 	int invalid;
 
-	invalid = reject_invalid_process_program_ref(opts, "process.start", program);
-	if (invalid) {
-		return invalid;
-	}
-
-	if (!build_process_start_body(&body, program, args_json)) {
+	if (!normalized_program) {
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
+
+	invalid = reject_invalid_process_program_ref(opts, "process.start", normalized_program);
+	if (invalid) {
+		free(normalized_program);
+		return invalid;
+	}
+
+	if (!build_process_start_body(&body, normalized_program, args_json)) {
+		free(normalized_program);
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+	free(normalized_program);
 
 	start = monotonic_ms();
 	ok = process_post(opts, "processStart", body.data, &res);
@@ -1688,19 +1854,28 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 	GwBuffer body;
 	GwHttpResponse res;
 	char *process_id = NULL;
+	char *normalized_program = normalize_process_program_alloc(program);
 	char *seq = NULL;
 	int exit_code = 0;
 	int invalid;
 
-	invalid = reject_invalid_process_program_ref(opts, "run", program);
-	if (invalid) {
-		return invalid;
-	}
-
-	if (!build_process_start_body(&body, program, args_json)) {
+	if (!normalized_program) {
 		fprintf(stderr, "gw: out of memory\n");
 		return 4;
 	}
+
+	invalid = reject_invalid_process_program_ref(opts, "run", normalized_program);
+	if (invalid) {
+		free(normalized_program);
+		return invalid;
+	}
+
+	if (!build_process_start_body(&body, normalized_program, args_json)) {
+		free(normalized_program);
+		fprintf(stderr, "gw: out of memory\n");
+		return 4;
+	}
+	free(normalized_program);
 	if (!process_post(opts, "processStart", body.data, &res)) {
 		buffer_free(&body);
 		exit_code = print_remote_result(opts, "process.start", &res, 0);
@@ -1851,6 +2026,7 @@ int command_agent_manifest(const GwOptions *opts)
 			auth_header_configured() ? "true" : "false");
 		printf("\"auth\":{\"configured\":%s,\"preferredEnv\":\"GRIDWHALE_AUTH_HEADER\",\"interactiveFallback\":true,\"agentGuidance\":\"Set GRIDWHALE_AUTH_HEADER to a full Basic auth value. If local GridWhale MCP config is available, load the Authorization header from that config without printing it.\"},",
 			auth_header_configured() ? "true" : "false");
+		printf("\"programIDs\":{\"serverCreateResult\":\"/file/PROGRAMID\",\"programWrappersAccept\":[\"/file/PROGRAMID\",\"PROGRAMID\"],\"processStartAccept\":[\"PROGRAMID.entryPoint\",\"/file/PROGRAMID\",\"PROGRAMID\"]},");
 		printf("\"capabilities\":{\"localRun\":false,\"remoteTools\":true,\"toolDiscovery\":true,\"toolInvocation\":true,\"resources\":true,\"resourceRead\":true,\"programWrappers\":true,\"remoteProcess\":true,\"interactiveIO\":true,\"jsonOutput\":true,\"jsonlOutput\":false,\"schemas\":true,\"cache\":false},");
 		printf("\"defaults\":{\"output\":\"json\",\"timeout\":\"30s\"},");
 		printf("\"commands\":[");
@@ -1867,10 +2043,10 @@ int command_agent_manifest(const GwOptions *opts)
 		printf("{\"name\":\"program.read\",\"argv\":[\"gw\",\"program\",\"read\",\"<programID>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"program.compile\",\"argv\":[\"gw\",\"program\",\"compile\",\"<programID>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"program.run\",\"argv\":[\"gw\",\"program\",\"run\",\"<programID>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"process.start\",\"argv\":[\"gw\",\"process\",\"start\",\"<program>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
+		printf("{\"name\":\"process.start\",\"argv\":[\"gw\",\"process\",\"start\",\"<programID-or-entryPoint>\",\"--json-file\",\"<path>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"process.view\",\"argv\":[\"gw\",\"process\",\"view\",\"<processID>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");
 		printf("{\"name\":\"process.input\",\"argv\":[\"gw\",\"process\",\"input\",\"<processID>\",\"--text\",\"<text>\",\"--seq-file\",\"<path>\",\"--output\",\"json\"]},");
-		printf("{\"name\":\"run\",\"argv\":[\"gw\",\"run\",\"<program>\",\"--json-file\",\"<path>\"]}");
+		printf("{\"name\":\"run\",\"argv\":[\"gw\",\"run\",\"<programID-or-entryPoint>\",\"--json-file\",\"<path>\"]}");
 		printf("],\"durationMs\":%ld,\"toolDiscoveryResult\":", duration);
 		if (ok) {
 			printf("%s", res.body.data ? res.body.data : "null");

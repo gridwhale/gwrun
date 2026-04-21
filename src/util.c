@@ -9,6 +9,31 @@
 #include <windows.h>
 #endif
 
+static int path_looks_like_msys_rewritten_program_id(const char *path)
+{
+	return path &&
+		(strncmp(path, "C:/Program Files/Git/file/", 26) == 0 ||
+		 strncmp(path, "C:\\Program Files\\Git\\file\\", 26) == 0);
+}
+
+static int path_looks_like_mangled_windows_backslash_path(const char *path)
+{
+	const char *p;
+
+	if (!path || !path[0] || !path[1] || path[1] != ':') {
+		return 0;
+	}
+	if (strchr(path, '\\') != NULL || strchr(path, '/') != NULL) {
+		return 0;
+	}
+	for (p = path + 2; *p; p++) {
+		if (*p == '.' || *p == '-' || *p == '_') {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 void buffer_init(GwBuffer *buf)
 {
 	buf->data = NULL;
@@ -131,7 +156,17 @@ char *read_file_alloc(const char *path, char *error, size_t error_len)
 
 	f = fopen(path, "rb");
 	if (!f) {
-		snprintf(error, error_len, "failed to open file: %s", path);
+		if (path_looks_like_msys_rewritten_program_id(path)) {
+			snprintf(error, error_len,
+				"failed to open file: %s (Git Bash/MSYS may have rewritten /file/... into a Windows path; prefer PowerShell, use forward slashes, or set MSYS_NO_PATHCONV=1)",
+				path);
+		} else if (path_looks_like_mangled_windows_backslash_path(path)) {
+			snprintf(error, error_len,
+				"failed to open file: %s (this looks like a Windows path with backslashes eaten by bash; prefer forward slashes or quote/escape backslashes)",
+				path);
+		} else {
+			snprintf(error, error_len, "failed to open file: %s", path);
+		}
 		return NULL;
 	}
 
