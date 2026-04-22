@@ -941,9 +941,9 @@ try {
     Write-Host ""
     Write-Host "CASE: processInput rejects missing inputText"
     $inputValidationStart = Invoke-Gw @("process", "start", $helloWorldTool, "--json-file", $interactiveArgsPath)
-    $inputValidationProcessID = $inputValidationStart.Json.result
+    $inputValidationProcessID = $inputValidationStart.Json.result.processID
     $inputValidationView = Invoke-Gw @("process", "view", $inputValidationProcessID, "--seq", "0")
-    $inputValidationSeq = $inputValidationView.Json.result.INPUT.seq
+    $inputValidationSeq = $inputValidationView.Json.result.input.seq
     $missingInputText = Invoke-ProcessEndpoint "processInput" @{ processID = $inputValidationProcessID; seq = $inputValidationSeq }
     Assert-True `
         (Test-IsDirectValidationError $missingInputText) `
@@ -954,9 +954,9 @@ try {
     Write-Host ""
     Write-Host "CASE: processInput rejects numeric inputText"
     $numberInputStart = Invoke-Gw @("process", "start", $helloWorldTool, "--json-file", $interactiveArgsPath)
-    $numberInputProcessID = $numberInputStart.Json.result
+    $numberInputProcessID = $numberInputStart.Json.result.processID
     $numberInputView = Invoke-Gw @("process", "view", $numberInputProcessID, "--seq", "0")
-    $numberInputSeq = $numberInputView.Json.result.INPUT.seq
+    $numberInputSeq = $numberInputView.Json.result.input.seq
     $numberInputText = Invoke-ProcessEndpoint "processInput" @{ processID = $numberInputProcessID; inputText = 123; seq = $numberInputSeq }
     Assert-True `
         (Test-IsDirectValidationError $numberInputText) `
@@ -968,25 +968,25 @@ try {
     Write-Host "CASE: interactive process start/view/input/view succeeds"
     $processStart = Invoke-Gw @("process", "start", $helloWorldTool, "--json-file", $interactiveArgsPath)
     Assert-True `
-        ($processStart.ExitCode -eq 0 -and $processStart.Json.result -is [string] -and $processStart.Json.result.Length -gt 0) `
+        ($processStart.ExitCode -eq 0 -and $null -ne $processStart.Json.result -and $processStart.Json.result.processID -is [string] -and $processStart.Json.result.processID.Length -gt 0 -and $processStart.Json.result.status -eq "waitingForInput") `
         "process start returns a processID" `
-        "gw process start returns ok:true and result as a non-empty processID string." `
+        "gw process start returns ok:true with result.processID and status='waitingForInput'." `
         (Format-JsonCompact $processStart.Json)
-    $processID = $processStart.Json.result
+    $processID = $processStart.Json.result.processID
 
     $processView = Invoke-Gw @("process", "view", $processID, "--seq", "0")
     $inputSeq = $null
     if ($processView.ExitCode -eq 0 -and
         $null -ne $processView.Json.result -and
-        ($processView.Json.result.PSObject.Properties.Name -contains "INPUT") -and
-        $null -ne $processView.Json.result.INPUT -and
-        ($processView.Json.result.INPUT.PSObject.Properties.Name -contains "seq")) {
-        $inputSeq = $processView.Json.result.INPUT.seq
+        ($processView.Json.result.PSObject.Properties.Name -contains "input") -and
+        $null -ne $processView.Json.result.input -and
+        ($processView.Json.result.input.PSObject.Properties.Name -contains "seq")) {
+        $inputSeq = $processView.Json.result.input.seq
     }
     Assert-True `
-        ($processView.ExitCode -eq 0 -and $processView.Json.result.'$Status' -eq "waiting.consoleInput" -and $null -ne $inputSeq) `
+        ($processView.ExitCode -eq 0 -and $processView.Json.result.status -eq "waitingForInput" -and $null -ne $inputSeq) `
         "process view reports input request with seq" `
-        'result.$Status=''waiting.consoleInput'' and result.INPUT.seq is present.' `
+        "result.status='waitingForInput' and result.input.seq is present." `
         (Format-JsonCompact $processView.Json)
 
     $inputSeqPath = Join-Path $tempDir "interactive-input-seq.json"
@@ -996,78 +996,60 @@ try {
     $nextSeq = $null
     if ($processInput.ExitCode -eq 0 -and
         $null -ne $processInput.Json.result -and
-        ($processInput.Json.result.PSObject.Properties.Name -contains '$Seq')) {
-        $nextSeq = $processInput.Json.result.'$Seq'
+        ($processInput.Json.result.PSObject.Properties.Name -contains 'seq')) {
+        $nextSeq = $processInput.Json.result.seq
     }
     Assert-True `
         ($processInput.ExitCode -eq 0 -and $null -ne $nextSeq) `
         "process input accepts text and returns next seq" `
-        'gw process input returns ok:true and result.$Seq.' `
+        "gw process input returns ok:true and result.seq." `
         (Format-JsonCompact $processInput.Json)
 
     $nextSeqPath = Join-Path $tempDir "interactive-next-seq.json"
     Write-Utf8NoBom $nextSeqPath (Format-JsonCompact $nextSeq)
 
     $finalView = Invoke-Gw @("process", "view", $processID, "--seq-file", $nextSeqPath)
-    $conText = ""
-    if ($finalView.ExitCode -eq 0 -and
-        $null -ne $finalView.Json.result -and
-        ($finalView.Json.result.PSObject.Properties.Name -contains "CON")) {
-        $conText = ($finalView.Json.result.CON -join "`n")
-    }
     Assert-True `
-        ($finalView.ExitCode -eq 0 -and $finalView.Json.result.'$Status' -eq "terminated" -and $conText.Contains("Hello, Codex!")) `
+        ($finalView.ExitCode -eq 0 -and $finalView.Json.result.status -eq "completed" -and $finalView.Json.result.outputText.Contains("Hello, Codex!")) `
         "process view returns final output after input" `
-        'result.$Status=''terminated'' and CON contains ''Hello, Codex!''.' `
+        "result.status='completed' and outputText contains 'Hello, Codex!'." `
         (Format-JsonCompact $finalView.Json)
 
     Write-Host ""
     Write-Host "CASE: processStart accepts created /file/PROGRAMID"
     $fileProcessStart = Invoke-Gw @("process", "start", $programID, "--json-file", $interactiveArgsPath)
     Assert-True `
-        ($fileProcessStart.ExitCode -eq 0 -and $fileProcessStart.Json.result -is [string] -and $fileProcessStart.Json.result.Length -gt 0) `
+        ($fileProcessStart.ExitCode -eq 0 -and $null -ne $fileProcessStart.Json.result -and $fileProcessStart.Json.result.processID -is [string] -and $fileProcessStart.Json.result.processID.Length -gt 0 -and $fileProcessStart.Json.result.status -eq "completed") `
         "process start accepts /file/PROGRAMID and returns a processID" `
-        "gw process start /file/PROGRAMID returns ok:true and result as a non-empty processID string." `
+        "gw process start /file/PROGRAMID returns ok:true with result.processID and status='completed'." `
         (Format-JsonCompact $fileProcessStart.Json)
 
-    if ($fileProcessStart.ExitCode -eq 0 -and $fileProcessStart.Json.result -is [string]) {
-        $fileProcessID = $fileProcessStart.Json.result
+    if ($fileProcessStart.ExitCode -eq 0 -and $null -ne $fileProcessStart.Json.result -and $fileProcessStart.Json.result.processID -is [string]) {
+        $fileProcessID = $fileProcessStart.Json.result.processID
         $fileProcessView = Invoke-Gw @("process", "view", $fileProcessID, "--seq", "0")
-        $fileConText = ""
-        if ($fileProcessView.ExitCode -eq 0 -and
-            $null -ne $fileProcessView.Json.result -and
-            ($fileProcessView.Json.result.PSObject.Properties.Name -contains "CON")) {
-            $fileConText = ($fileProcessView.Json.result.CON -join "`n")
-        }
-    Assert-True `
-        ($fileProcessView.ExitCode -eq 0 -and $fileProcessView.Json.result.'$Status' -eq "terminated" -and $fileConText.Contains("validation sentinel")) `
-        "process view returns output for /file/PROGRAMID process" `
-        'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
-        (Format-JsonCompact $fileProcessView.Json)
+        Assert-True `
+            ($fileProcessView.ExitCode -eq 0 -and $fileProcessView.Json.result.status -eq "completed" -and $fileProcessView.Json.result.outputText.Contains("validation sentinel")) `
+            "process view returns output for /file/PROGRAMID process" `
+            "result.status='completed' and outputText contains 'validation sentinel'." `
+            (Format-JsonCompact $fileProcessView.Json)
     }
 
     Write-Host ""
     Write-Host "CASE: processStart accepts bare PROGRAMID"
     $bareProcessStart = Invoke-Gw @("process", "start", $bareProgramID, "--json-file", $interactiveArgsPath)
     Assert-True `
-        ($bareProcessStart.ExitCode -eq 0 -and $bareProcessStart.Json.result -is [string] -and $bareProcessStart.Json.result.Length -gt 0) `
+        ($bareProcessStart.ExitCode -eq 0 -and $null -ne $bareProcessStart.Json.result -and $bareProcessStart.Json.result.processID -is [string] -and $bareProcessStart.Json.result.processID.Length -gt 0 -and $bareProcessStart.Json.result.status -eq "completed") `
         "gw normalizes bare PROGRAMID for process start" `
-        "gw process start PROGRAMID returns ok:true and result as a non-empty processID string." `
+        "gw process start PROGRAMID returns ok:true with result.processID and status='completed'." `
         (Format-JsonCompact $bareProcessStart.Json)
 
-    if ($bareProcessStart.ExitCode -eq 0 -and $bareProcessStart.Json.result -is [string]) {
-        $bareProcessID = $bareProcessStart.Json.result
+    if ($bareProcessStart.ExitCode -eq 0 -and $null -ne $bareProcessStart.Json.result -and $bareProcessStart.Json.result.processID -is [string]) {
+        $bareProcessID = $bareProcessStart.Json.result.processID
         $bareProcessView = Invoke-Gw @("process", "view", $bareProcessID, "--seq", "0")
-        $bareConText = ""
-        if ($bareProcessView.ExitCode -eq 0 -and
-            $null -ne $bareProcessView.Json.result -and
-            ($bareProcessView.Json.result.PSObject.Properties.Name -contains "CON")) {
-            $bareConText = ($bareProcessView.Json.result.CON -join "`n")
-        }
         Assert-True `
-            ($bareProcessView.ExitCode -eq 0 -and $bareProcessView.Json.result.'$Status' -eq "terminated" -and $bareConText.Contains("validation sentinel")) `
+            ($bareProcessView.ExitCode -eq 0 -and $bareProcessView.Json.result.status -eq "completed" -and $bareProcessView.Json.result.outputText.Contains("validation sentinel")) `
             "process view returns output for bare PROGRAMID process" `
-            'result.$Status=''terminated'' and CON contains ''validation sentinel''.' `
+            "result.status='completed' and outputText contains 'validation sentinel'." `
             (Format-JsonCompact $bareProcessView.Json)
     }
 
@@ -1127,12 +1109,12 @@ try {
     Write-Host ""
     Write-Host "CASE: process_kill terminates a waiting process"
     $killStart = Invoke-Gw @("process", "start", $helloWorldTool, "--json-file", $interactiveArgsPath)
-    $killProcessID = $killStart.Json.result
+    $killProcessID = $killStart.Json.result.processID
     $killView = Invoke-Gw @("process", "view", $killProcessID, "--seq", "0")
     Assert-True `
-        ($killStart.ExitCode -eq 0 -and $killView.ExitCode -eq 0 -and $killView.Json.result.'$Status' -eq "waiting.consoleInput") `
+        ($killStart.ExitCode -eq 0 -and $killView.ExitCode -eq 0 -and $killView.Json.result.status -eq "waitingForInput") `
         "test process is waiting for input before kill" `
-        'process start succeeds and initial view has result.$Status=''waiting.consoleInput''.' `
+        "process start succeeds and initial view has result.status='waitingForInput'." `
         (Format-JsonCompact $killView.Json)
     $kill = Invoke-Gw @("process", "kill", $killProcessID)
     Assert-True `
@@ -1142,9 +1124,9 @@ try {
         (Format-JsonCompact $kill.Json)
     $afterKillView = Invoke-Gw @("process", "view", $killProcessID, "--seq", "0")
     Assert-True `
-        ($afterKillView.ExitCode -eq 0 -and $afterKillView.Json.result.'$Status' -eq "terminated") `
-        "killed process views as terminated" `
-        'result.$Status=''terminated''.' `
+        ($afterKillView.ExitCode -eq 0 -and $afterKillView.Json.result.status -eq "completed") `
+        "killed process views as completed" `
+        "result.status='completed'." `
         (Format-JsonCompact $afterKillView.Json)
 
     if ($KeepProgram) {

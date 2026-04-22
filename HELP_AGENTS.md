@@ -98,20 +98,20 @@ View from the beginning:
 gw process view <processID> --seq 0 --output json
 ```
 
-If the view result contains `INPUT`, write `INPUT.seq` exactly as returned to a
+If the view result contains `input`, write `input.seq` exactly as returned to a
 file and send input:
 
 ```text
 gw process input <processID> --text <answer> --seq-file input.seq.json --output json
 ```
 
-An `INPUT` object looks like:
+An `input` object looks like:
 
 ```json
 {"prompt":"What is your name? ","seq":["AEON2011:ipInteger:v1","KzFQSQEAAAAD"],"type":"consoleText"}
 ```
 
-Use the `$Seq` returned by `process input` as the next view sequence:
+Use the `seq` returned by `process input` as the next view sequence:
 
 ```text
 gw process view <processID> --seq-file next.seq.json --output json

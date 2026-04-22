@@ -98,8 +98,8 @@ gw process view <processID> --seq-file next.seq.json --output json
 If your program needs repeated `input()` calls, put the loop in an
 `entrypoint` function and start `PROGRAMID.entryPoint`.
 
-When `process view` returns `INPUT.seq`, pass that exact JSON value to
-`process input`. After input, use the `$Seq` returned by `process input` for the
+When `process view` returns `input.seq`, pass that exact JSON value to
+`process input`. After input, use the `seq` returned by `process input` for the
 next view.
 
 ## Windows Shell Notes

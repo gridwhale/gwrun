@@ -216,6 +216,8 @@ static char *json_object_member_dup(const char *json, const char *name)
 	return value;
 }
 
+static char *json_string_dup(const char *quote, const char **end_out);
+
 static char *json_object_path_dup(const char *json, const char *object_name, const char *member_name)
 {
 	char *object_json = json_object_member_dup(json, object_name);
@@ -226,6 +228,30 @@ static char *json_object_path_dup(const char *json, const char *object_name, con
 		free(object_json);
 	}
 	return value;
+}
+
+static char *json_object_string_member_dup(const char *json, const char *name)
+{
+	char *value = json_object_member_dup(json, name);
+	char *text = NULL;
+
+	if (value && value[0] == '"') {
+		text = json_string_dup(value, NULL);
+	}
+	free(value);
+	return text;
+}
+
+static char *json_object_path_string_dup(const char *json, const char *object_name, const char *member_name)
+{
+	char *value = json_object_path_dup(json, object_name, member_name);
+	char *text = NULL;
+
+	if (value && value[0] == '"') {
+		text = json_string_dup(value, NULL);
+	}
+	free(value);
+	return text;
 }
 
 static int is_simple_program_id(const char *program_id)
@@ -323,8 +349,6 @@ static char *normalize_process_program_alloc(const char *program)
 	}
 	return out.data;
 }
-
-static char *json_string_dup(const char *quote, const char **end_out);
 
 static unsigned int read_u32_le(const unsigned char *p)
 {
@@ -945,42 +969,20 @@ static int build_process_input_body(GwBuffer *body, const char *process_id, cons
 	return ok;
 }
 
-static int print_json_string_array_member(const char *json, const char *member_name)
+static void print_json_string_member(const char *json, const char *member_name)
 {
-	char *array_json = json_object_member_dup(json, member_name);
-	const char *p;
-	int count = 0;
+	char *text = json_object_string_member_dup(json, member_name);
 
-	if (!array_json || array_json[0] != '[') {
-		free(array_json);
-		return 0;
+	if (!text) {
+		return;
 	}
-
-	p = array_json + 1;
-	while (*p) {
-		while (*p && *p != '"' && *p != ']') {
-			p++;
-		}
-		if (*p == ']') {
-			break;
-		}
-		if (*p == '"') {
-			const char *end = NULL;
-			char *text = json_string_dup(p, &end);
-			if (!text) {
-				break;
-			}
-			fputs(text, stdout);
-			if (text[0] && text[strlen(text) - 1] != '\n') {
-				putchar('\n');
-			}
-			free(text);
-			count++;
-			p = end ? end : p + 1;
+	if (text[0]) {
+		fputs(text, stdout);
+		if (text[strlen(text) - 1] != '\n') {
+			putchar('\n');
 		}
 	}
-	free(array_json);
-	return count;
+	free(text);
 }
 
 static int print_resources_list_text(const char *json)
@@ -1884,11 +1886,22 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 	}
 	buffer_free(&body);
 
-	process_id = json_string_dup(res.body.data, NULL);
+	process_id = json_object_string_member_dup(res.body.data ? res.body.data : "", "processID");
 	if (!process_id) {
-		fprintf(stderr, "gw: processStart did not return a process ID string\n");
+		fprintf(stderr, "gw: processStart did not return result.processID\n");
 		http_response_free(&res);
 		return 3;
+	}
+	{
+		char *status = json_object_string_member_dup(res.body.data ? res.body.data : "", "status");
+		print_json_string_member(res.body.data ? res.body.data : "", "outputText");
+		if (status && strcmp(status, "completed") == 0) {
+			free(status);
+			http_response_free(&res);
+			free(process_id);
+			return 0;
+		}
+		free(status);
 	}
 	http_response_free(&res);
 
@@ -1902,10 +1915,9 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 
 	for (;;) {
 		char *next_seq;
-		char *status_json;
 		char *status = NULL;
 		char *input_seq = NULL;
-		char *prompt = NULL;
+		char *prompt_text = NULL;
 
 		if (!build_process_view_body(&body, process_id, seq)) {
 			exit_code = 4;
@@ -1919,29 +1931,20 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 		}
 		buffer_free(&body);
 
-		print_json_string_array_member(res.body.data ? res.body.data : "", "CON");
+		print_json_string_member(res.body.data ? res.body.data : "", "outputText");
 
-		next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "$Seq");
+		next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "seq");
 		if (next_seq) {
 			free(seq);
 			seq = next_seq;
 		}
 
-		status_json = json_object_member_dup(res.body.data ? res.body.data : "", "$Status");
-		if (status_json && status_json[0] == '"') {
-			status = json_string_dup(status_json, NULL);
-		}
-		free(status_json);
-
-		input_seq = json_object_path_dup(res.body.data ? res.body.data : "", "INPUT", "seq");
-		prompt = json_object_path_dup(res.body.data ? res.body.data : "", "INPUT", "prompt");
+		status = json_object_string_member_dup(res.body.data ? res.body.data : "", "status");
+		input_seq = json_object_path_dup(res.body.data ? res.body.data : "", "input", "seq");
+		prompt_text = json_object_path_string_dup(res.body.data ? res.body.data : "", "input", "prompt");
 
 		if (input_seq) {
 			char line[4096];
-			char *prompt_text = NULL;
-			if (prompt && prompt[0] == '"') {
-				prompt_text = json_string_dup(prompt, NULL);
-			}
 			if (prompt_text && prompt_text[0]) {
 				fprintf(stderr, "%s", prompt_text);
 				if (prompt_text[strlen(prompt_text) - 1] != ' ') {
@@ -1951,7 +1954,6 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 			fflush(stderr);
 			if (!fgets(line, sizeof(line), stdin)) {
 				free(prompt_text);
-				free(prompt);
 				free(input_seq);
 				free(status);
 				http_response_free(&res);
@@ -1961,7 +1963,6 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 			line[strcspn(line, "\r\n")] = '\0';
 			if (!build_process_input_body(&body, process_id, line, input_seq)) {
 				free(prompt_text);
-				free(prompt);
 				free(input_seq);
 				free(status);
 				http_response_free(&res);
@@ -1972,7 +1973,6 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 			if (!process_post(opts, "processInput", body.data, &res)) {
 				buffer_free(&body);
 				free(prompt_text);
-				free(prompt);
 				free(input_seq);
 				free(status);
 				exit_code = print_remote_result(opts, "process.input", &res, 0);
@@ -1980,22 +1980,21 @@ int command_process_attach(const GwOptions *opts, const char *program, const cha
 				break;
 			}
 			buffer_free(&body);
-			next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "$Seq");
+			next_seq = json_object_member_dup(res.body.data ? res.body.data : "", "seq");
 			if (next_seq) {
 				free(seq);
 				seq = next_seq;
 			}
 			http_response_free(&res);
 			free(prompt_text);
-			free(prompt);
 			free(input_seq);
 			free(status);
 			continue;
 		}
 
-		free(prompt);
+		free(prompt_text);
 		free(input_seq);
-		if (status && strcmp(status, "terminated") == 0) {
+		if (status && strcmp(status, "completed") == 0) {
 			free(status);
 			http_response_free(&res);
 			break;
